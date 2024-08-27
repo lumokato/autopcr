@@ -261,6 +261,7 @@ class mirai_very_hard_sweep(simple_demand_sweep_base):
         need_list = [(token, need) for token, need in need_list.items() if need > 0]
         if not need_list:
             raise SkipError("所有纯净碎片均已盈余")
+        need_list = sorted(need_list, key=lambda x: x[1], reverse=True)
         return need_list
 
     def get_need_quest(self, token: ItemType) -> List[QuestDatum]:
