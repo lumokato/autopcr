@@ -24,7 +24,8 @@ async def Validator(account):
     from .bsgamesdk import captch
     print('use local validator')
     cap = await captch()
-    info = await localValidator(account, cap['gt'], cap['challenge'], cap['gt_user_id'])
+    info = None
+    # info = await localValidator(account, cap['gt'], cap['challenge'], cap['gt_user_id'])
     if not info:
         print('use remote validator')
         info = await remoteValidator()
@@ -61,34 +62,34 @@ async def manualValidator(account, gt, challenge, userid):
             break
     return info
 
-import bili_ticket_gt_python
+# import bili_ticket_gt_python
 
-async def localValidator(account, gt, challenge, userid):
-    gt_obj = bili_ticket_gt_python.ClickPy()
-    _type = None
-    info = None
+# async def localValidator(account, gt, challenge, userid):
+#     gt_obj = bili_ticket_gt_python.ClickPy()
+#     _type = None
+#     info = None
 
-    n = 3
-    for _ in range(n):
-        try:
-            _type = gt_obj.get_type(gt, challenge)
-            break
-        except Exception as e:
-            pass
+#     n = 3
+#     for _ in range(n):
+#         try:
+#             _type = gt_obj.get_type(gt, challenge)
+#             break
+#         except Exception as e:
+#             pass
 
-    if _type == 'click':
-        (c, s, args) = gt_obj.get_new_c_s_args(gt, challenge)
-        st = time.time()
-        w = gt_obj.generate_w(gt_obj.calculate_key(args), gt, challenge, str(c), s, "abcdefghijklmnop")
-        ed = time.time()
-        await asyncio.sleep(max(0, 2 - (ed - st)))
-        (msg, validate) = gt_obj.verify(gt, challenge, w)
-        info = {
-            "challenge": challenge,
-            "gt_user_id": userid,
-            "validate": validate
-        }
-    return info
+#     if _type == 'click':
+#         (c, s, args) = gt_obj.get_new_c_s_args(gt, challenge)
+#         st = time.time()
+#         w = gt_obj.generate_w(gt_obj.calculate_key(args), gt, challenge, str(c), s, "abcdefghijklmnop")
+#         ed = time.time()
+#         await asyncio.sleep(max(0, 2 - (ed - st)))
+#         (msg, validate) = gt_obj.verify(gt, challenge, w)
+#         info = {
+#             "challenge": challenge,
+#             "gt_user_id": userid,
+#             "validate": validate
+#         }
+#     return info
 
 async def remoteValidator():
     url = f"https://pcrd.tencentbot.top/geetest_renew"
