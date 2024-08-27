@@ -132,6 +132,8 @@ class simple_demand_sweep_base(Module):
         try:
             for token, _ in need_list:
                 for quest in self.get_need_quest(token):
+                    if quest.quest_id not in client.data.finishedQuest:
+                        pass
                     max_times = self.get_max_times(client, quest.quest_id)
                     try:
                         resp = await client.quest_skip_aware(quest.quest_id, max_times, True, True)
