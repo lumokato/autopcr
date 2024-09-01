@@ -21,6 +21,16 @@ validate_dict: Dict[str, ValidateInfo] = {}
 validate_ok_dict: Dict[str, ValidateInfo] = {}
 
 async def Validator(account):
+    info = None
+    for validator in [remoteValidator, localValidator, manualValidator]:
+        try:
+            info = await validator(account)
+            if info:
+                break
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            pass
     from .bsgamesdk import captch
     print('use local validator')
     cap = await captch()
@@ -37,7 +47,15 @@ async def Validator(account):
         raise PanicError("验证码验证超时")
     return info
 
-async def manualValidator(account, gt, challenge, userid):
+async def manualValidator(account):
+    print('use manual validator')
+
+    from .bsgamesdk import captch
+    cap = await captch()
+    challenge = cap['challenge']
+    gt = cap['gt']
+    userid = cap['gt_user_id']
+
     id = questutils.create_quest_token()
     url = f"/daily/validate?id={id}&captcha_type=1&challenge={challenge}&gt={gt}&userid={userid}&gs=1"
     validate_dict[account] = ValidateInfo(
@@ -62,12 +80,20 @@ async def manualValidator(account, gt, challenge, userid):
             break
     return info
 
-# import bili_ticket_gt_python
 
-# async def localValidator(account, gt, challenge, userid):
-#     gt_obj = bili_ticket_gt_python.ClickPy()
-#     _type = None
-#     info = None
+async def localValidator(account):
+    print('use local validator')
+
+    from .bsgamesdk import captch
+    cap = await captch()
+    challenge = cap['challenge']
+    gt = cap['gt']
+    userid = cap['gt_user_id']
+
+    import bili_ticket_gt_python
+    gt_obj = bili_ticket_gt_python.ClickPy()
+    _type = None
+    info = None
 
 #     n = 3
 #     for _ in range(n):
@@ -91,11 +117,12 @@ async def manualValidator(account, gt, challenge, userid):
 #         }
 #     return info
 
-async def remoteValidator():
+async def remoteValidator(account):
+    print('use remote validator')
+
     url = f"https://pcrd.tencentbot.top/geetest_renew"
     header = {"Content-Type": "application/json", "User-Agent": "autopcr/1.0.0"}
     info = ""
-    print(f"farm: Auto verifying")
     ret = None
     try:
         res = await aiorequests.get(url=url, headers=header)
