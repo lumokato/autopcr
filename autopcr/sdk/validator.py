@@ -31,18 +31,6 @@ async def Validator(account):
             import traceback
             traceback.print_exc()
             pass
-    from .bsgamesdk import captch
-    print('use local validator')
-    cap = await captch()
-    info = None
-    # info = await localValidator(account, cap['gt'], cap['challenge'], cap['gt_user_id'])
-    if not info:
-        print('use remote validator')
-        info = await remoteValidator()
-    if not info:
-        print('use manual validator')
-        cap = await captch()
-        info = await manualValidator(account, cap["gt"], cap["challenge"], cap["gt_user_id"])
     if not info:
         raise PanicError("验证码验证超时")
     return info

@@ -48,8 +48,8 @@ class unit_story_reading(Module):
         for story in db.unit_story:
             if (
                 story.story_id not in read_story and
-                ((story.pre_story_id in read_story or now >= db.parse_time(story.force_unlock_time)) or now >= db.parse_time(story.force_unlock_time))and
-                ((story.pre_story_id_2 in read_story or now >= db.parse_time(story.force_unlock_time_2)) or now >= db.parse_time(story.force_unlock_time_2)) and
+                (story.pre_story_id in read_story or now >= db.parse_time(story.force_unlock_time)) and
+                (story.pre_story_id_2 in read_story or now >= db.parse_time(story.force_unlock_time_2)) and
                 story.story_group_id in client.data.unit_love_data and 
                 client.data.unit_love_data[story.story_group_id].love_level >= story.love_level
                 ):
