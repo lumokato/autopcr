@@ -81,7 +81,8 @@ class smart_normal_sweep(Module):
                             first = False
                             self._log("需求装备均已盈余")
                             if full2all:
-                                gap = client.data.get_demand_gap(all_demand, lambda x: db.is_equip(x))
+                                demand = all_demand
+                                gap = client.data.get_demand_gap(demand, lambda x: db.is_equip(x))
                                 self._log("考虑所有角色的需求装备")
 
                     quest_weight = client.data.get_quest_weght(gap)
@@ -223,7 +224,7 @@ class smart_shiori_sweep(simple_demand_sweep_base):
         return 5
 
 unique_equip_2_pure_memory_id = [
-        (32025, 1), # 水女仆
+        (32025, 2), # 水女仆，女仆
         (32046, 1), # 水猫剑
         (32048, 1), # 水子龙
         (32060, 1), # 黑猫
@@ -359,8 +360,8 @@ class smart_sweep(DIY_sweep):
         if is_start_run_time: 
             self._log(f"刷取start关卡")
             for tab in client.data.user_my_quest:
-                for x in tab.skip_list:
-                    if tab.tab_name == 'start':
+                if tab.tab_name == 'start':
+                    for x in tab.skip_list:
                         quest.append((x, tab.skip_count))
         return quest
 
@@ -370,8 +371,8 @@ class smart_sweep(DIY_sweep):
         if is_loop_run_time: 
             self._log(f"刷取loop关卡")
             for tab in client.data.user_my_quest:
-                for x in tab.skip_list:
-                    if tab.tab_name == 'loop':
+                if tab.tab_name == 'loop':
+                    for x in tab.skip_list:
                         quest.append((x, tab.skip_count))
         return quest
 

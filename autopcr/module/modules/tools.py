@@ -91,8 +91,27 @@ class cook_pudding(Module):
         if is_abort: raise AbortError("")
         if is_skip: raise SkipError("")
 
+@description('看看你缺了什么角色')
+@name('查缺角色')
+@default(True)
+class missing_unit(Module):
+    async def do_task(self, client: pcrclient):
+        missing_unit = set(db.unlock_unit_condition.keys()) - set(client.data.unit.keys())
+        if not missing_unit:
+            self._log("全图鉴玩家！你竟然没有缺少的角色！")
+        else:
+            limit_unit = set(id for id in missing_unit if db.unit_data[id].is_limited)
+            resident_unit = missing_unit - limit_unit
+            self._log(f"缺少{len(missing_unit)}个角色，其中{len(limit_unit)}个限定角色，{len(resident_unit)}个常驻角色")
+            if limit_unit:
+                self._log(f"==限定角色==" )
+                self._log('\n'.join(db.get_unit_name(id) for id in limit_unit))
+                self._log('')
+            if resident_unit:
+                self._log(f"==常驻角色==" )
+                self._log('\n'.join(db.get_unit_name(id) for id in resident_unit))
 
-@description('来进行赛博抽卡')
+@description('警告！真抽！抽到出指NEW出保底角色，或达天井停下来，如果已有保底角色，就不会NEW！意味着就是一井！')
 @name('抽卡')
 @booltype("single_ticket", "用单抽券", False)
 @singlechoice("pool_id", "池子", "", db.get_cur_gacha)
@@ -136,7 +155,7 @@ class gacha_start(Module):
             raise 
         finally:
             self._log(f"抽取了{cnt}次{'十连' if not single_ticket else '单抽'}")
-            self._log(await client.serlize_gacha_reward(reward))
+            self._log(await client.serlize_gacha_reward(reward, target_gacha.id))
             point = client.data.gacha_point[target_gacha.exchange_id].current_point if target_gacha.exchange_id in client.data.gacha_point else 0
             self._log(f"当前pt为{point}")
 
@@ -262,11 +281,11 @@ class Arena(Module):
 
         rank_id = list(range(len(attack)))
         best_team_id = await self.choose_best_team(attack, rank_id, client)
-        if best_team_id >= 0: # it always be the first one now
+        if best_team_id >= 0 and best_team_id < len(attack):
             self._log(f"选择第{best_team_id + 1}支队伍作为进攻方队伍")
             await self.update_deck(attack[best_team_id], client)
         else:
-            self._log("未找到合适队伍，请自行选择")
+            self._warn(f"队伍只有{len(attack)}支，无法选择第{best_team_id + 1}支队伍作为进攻方队伍")
 
         attack_str = self.present_attack(attack[:max(8, best_team_id + 1)])
         msg = [defend_str, "-------", attack_str]
@@ -275,6 +294,7 @@ class Arena(Module):
 @description('查询jjc回刺阵容，并自动设置进攻队伍，对手排名=0则查找对战纪录第一条刺人的，<0则查找对战纪录，-1表示第一条，-2表示第二条，以此类推')
 @name('jjc回刺查询')
 @default(True)
+@inttype("opponent_jjc_attack_team_id", "选择阵容", 1, [i for i in range(1, 10)])
 @inttype("opponent_jjc_rank", "对手排名", -1, [i for i in range(-20, 101)])
 class jjc_back(Arena):
 
@@ -297,11 +317,8 @@ class jjc_back(Arena):
         return msg
 
     async def choose_best_team(self, team: List[ArenaQueryResult], rank_id: List[int], client: pcrclient) -> int: 
-        all_have = [id for id in rank_id if all(
-            unit.id in client.data.unit and 
-            client.data.unit[unit.id].promotion_level > 7 
-            for unit in team[id].atk)]
-        return -1 if not all_have else all_have[0]
+        id = int(self.get_config("opponent_jjc_attack_team_id")) - 1
+        return id
 
     async def update_deck(self, units: ArenaQueryResult, client: pcrclient):
         units_id = [unit.id for unit in units.atk]
@@ -313,7 +330,7 @@ class jjc_back(Arena):
 
         under_rank_bonus_unit = [unit for unit in units_id if client.data.unit[unit].promotion_level < db.equip_max_rank - 1]
         if under_rank_bonus_unit:
-            self._warn(f"警告：{'|'.join([db.get_unit_name(unit_id) for unit_id in under_rank_bonus_unit])}无品级加成")
+            self._warn(f"无品级加成：{'，'.join([db.get_unit_name(unit_id) for unit_id in under_rank_bonus_unit])}")
 
         await client.deck_update(ePartyType.ARENA, units_id)
 
@@ -349,6 +366,7 @@ class jjc_back(Arena):
 @description('查询pjjc回刺阵容，并自动设置进攻队伍，对手排名=0则查找对战纪录第一条刺人的，<0则查找对战纪录，-1表示第一条，-2表示第二条，以此类推')
 @name('pjjc回刺查询')
 @default(True)
+@inttype("opponent_pjjc_attack_team_id", "选择阵容", 1, [i for i in range(1, 10)])
 @inttype("opponent_pjjc_rank", "对手排名", -1, [i for i in range(-20, 101)])
 class pjjc_back(Arena):
     def target_rank(self) -> int:
@@ -361,7 +379,7 @@ class pjjc_back(Arena):
         return msg
 
     def present_attack(self, attack: List[List[ArenaQueryResult]]) -> str:
-        msg = [ArenaQuery.str_result(x) for x in attack]
+        msg = [f"第{id + 1}对策\n{ArenaQuery.str_result(x)}" for id, x in enumerate(attack)]
         msg = '\n\n'.join(msg)
         return msg
 
@@ -372,12 +390,8 @@ class pjjc_back(Arena):
         return (await client.get_grand_arena_info()).grand_arena_info.rank
 
     async def choose_best_team(self, team: List[List[ArenaQueryResult]], rank_id: List[int], client: pcrclient) -> int:
-        all_have = [id for id in rank_id if all(
-            unit.id in client.data.unit and 
-            client.data.unit[unit.id].promotion_level > 7
-            for units in team[id] 
-                for unit in units.atk)]
-        return -1 if not all_have else all_have[0]
+        id = int(self.get_config("opponent_pjjc_attack_team_id")) - 1
+        return id
 
     async def update_deck(self, units: List[ArenaQueryResult], client: pcrclient):
         units_id = [[uni.id for uni in unit.atk] for unit in units]
@@ -392,7 +406,7 @@ class pjjc_back(Arena):
         under_rank_bonus_unit = [uni_id for unit_id in units_id for uni_id in unit_id if 
                                  client.data.unit[uni_id].promotion_level < db.equip_max_rank - 1]
         if under_rank_bonus_unit:
-            self._warn(f"警告：{'|'.join([db.get_unit_name(unit_id) for unit_id in under_rank_bonus_unit])}无品级加成")
+            self._warn(f"无品级加成：{'，'.join([db.get_unit_name(unit_id) for unit_id in under_rank_bonus_unit])}")
 
         deck_list = []
         for i, unit_id in enumerate(units_id):

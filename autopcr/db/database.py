@@ -534,7 +534,18 @@ class database():
                 PrizegachaDatum.query(db)
                 .to_dict(lambda x: x.prizegacha_id, lambda x: x)
             )
-            
+
+            self.prizegacha_sp_data: Dict[int, Dict[int, PrizegachaSpDatum]] = (
+                PrizegachaSpDatum.query(db)
+                .group_by(lambda x: x.gacha_id)
+                .to_dict(lambda x: x.key, lambda x: x.to_dict(lambda x: x.rarity, lambda x: x))
+            )
+
+            self.prizegacha_sp_detail: Dict[int, PrizegachaSpDetail] = (
+                PrizegachaSpDetail.query(db)
+                .to_dict(lambda x: x.disp_rarity, lambda x: x)
+            )
+
             self.campaign_gacha: Dict[int, CampaignFreegacha] = (
                 CampaignFreegacha.query(db)
                 .to_dict(lambda x: x.campaign_id, lambda x: x)
@@ -677,6 +688,9 @@ class database():
 
     def is_equip(self, item: ItemType, uncraftable_only: bool = False) -> bool:
         return item[0] == eInventoryType.Equip and item[1] >= 101000 and item[1] < 140000 and (not uncraftable_only or not self.is_equip_craftable(item))
+
+    def is_equip_raw_ore(self, item: ItemType) -> bool:
+        return item[0] == eInventoryType.Equip and item[1] >= 150001 and item[1] < 160000
 
     def is_equip_craftable(self, item: ItemType) -> bool:
         return item in self.equip_craft
@@ -884,15 +898,21 @@ class database():
         return schedule[0]
 
     def parse_time(self, time: str) -> datetime.datetime:
-        if time.count(':') == 1: # 怎么以前没有秒的
-            time += ":00"
-        return datetime.datetime.strptime(time, '%Y/%m/%d %H:%M:%S')
+        for timeformat in ['%Y/%m/%d %H:%M:%S', '%Y/%m/%d %H:%M', '%Y-%m-%dT%H:%M:%S.%fZ', '%Y-%m-%dT%H:%M:%SZ']:
+            try:
+                return datetime.datetime.strptime(time, timeformat)
+            except:
+                pass
+        raise ValueError(f"无法解析时间：{time}")
 
     def parse_time_safe(self, time: str) -> datetime.datetime:
         return datetime.datetime.strptime(time, '%Y%m%d%H%M%S')
 
     def format_time(self, time: datetime.datetime) -> str:
         return time.strftime("%Y/%m/%d %H:%M:%S")
+
+    def format_date(self, time: datetime.datetime) -> str:
+        return time.strftime("%Y/%m/%d")
 
     def format_time_safe(self, time: datetime.datetime) -> str:
         return time.strftime("%Y%m%d%H%M%S")
@@ -1019,5 +1039,12 @@ class database():
                 .where(lambda x: x.start_time == last_start_time) \
                 .select(lambda x: f"{x.quest_id}: {x.quest_name.split(' ')[1]}") \
                 .to_list()
+
+    def get_gacha_prize_name(self, gacha_id: int, prize_rarity: int) -> str:
+        if gacha_id in self.prizegacha_sp_data:
+            prize_rarity = self.prizegacha_sp_data[gacha_id][prize_rarity].disp_rarity
+            if prize_rarity in self.prizegacha_sp_detail:
+                return self.prizegacha_sp_detail[prize_rarity].name 
+        return f"{prize_rarity}等奖"
 
 db = database()
