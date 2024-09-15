@@ -54,7 +54,6 @@ daily_modules = [
     smart_shiori_sweep,
     last_normal_quest_sweep,
     smart_normal_sweep,
-    last_quest_sweep,
 
     all_in_hatsune,
 
