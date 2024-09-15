@@ -386,7 +386,7 @@ class smart_sweep(DIY_sweep):
 @multichoice("last_sweep_quests", '手选刷取关卡', [], db.last_normal_quest_candidate)
 @default(False)
 @tag_stamina_consume
-class last_normal_quest_sweep(DIY_sweep):
+class last_quest_sweep(DIY_sweep):
     async def get_loop_quest(self, client: pcrclient) -> List[Tuple[int, int]]:
         last_sweep_quests: List[str] = self.get_config('last_sweep_quests')
         last_sweep_quests_amount: int = int(self.get_config('last_sweep_quests_amount'))
