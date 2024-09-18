@@ -71,7 +71,7 @@ class smart_normal_sweep(Module):
 
         try:
             target_quest = []
-            for i in range(10000):
+            for i in range(10):
 
                 if i % 3 == 0:
 
