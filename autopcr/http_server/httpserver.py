@@ -1,7 +1,7 @@
 from copy import deepcopy
 from datetime import timedelta
 import traceback
-import quart
+import quart, asyncio
 from quart import request, Blueprint, send_file, send_from_directory
 from quart_rate_limiter import RateLimiter, rate_limit, RateLimitExceeded
 from quart_auth import AuthUser, QuartAuth, Unauthorized, current_user, login_required, login_user, logout_user
@@ -13,6 +13,8 @@ from ..module.accountmgr import Account, AccountManager, UserException, instance
 from ..constants import CACHE_DIR
 from ..util.draw import instance as drawer
 
+APP_VERSION = "1.1.0"
+
 CACHE_HTTP_DIR = os.path.join(CACHE_DIR, 'http_server')
 
 PATH = os.path.dirname(os.path.abspath(__file__))
@@ -23,6 +25,8 @@ class HttpServer:
 
         self.web = Blueprint('web', __name__, static_folder=static_path)
 
+        # version check & rate limit
+        self.api_limit = Blueprint('api_limit', __name__, url_prefix = "/api")
         self.api = Blueprint('api', __name__, url_prefix = "/api")
 
         self.app = Blueprint('app', __name__, url_prefix = "/daily")
@@ -35,9 +39,11 @@ class HttpServer:
 
         self.app.register_blueprint(self.web)
         self.app.register_blueprint(self.api)
+        self.app.register_blueprint(self.api_limit)
 
         self.host = host
         self.port = port
+        self.validate_server = {}
         self.configure_routes()
         self.qq_mod = qq_mod
 
@@ -52,7 +58,7 @@ class HttpServer:
                     except AccountException as e:
                         return str(e), 400
                     except Exception as e:
-                        print(e)
+                        traceback.print_exc()
                         return "服务器发生错误", 500
                 else: 
                     return "Please specify an account", 400
@@ -73,7 +79,15 @@ class HttpServer:
     
     def configure_routes(self):
 
-        @self.api.errorhandler(RateLimitExceeded)
+        @self.api_limit.before_request
+        async def check_app_version():
+            version = request.headers.get('X-App-Version', None)
+            if version != APP_VERSION:
+                return f"后端期望前端版本为{APP_VERSION}，请更新", 400
+            else:
+                return None
+
+        @self.api_limit.errorhandler(RateLimitExceeded)
         async def handle_rate_limit_exceeded_error(error):
             return "您冲得太快了，休息一下吧", 429
 
@@ -109,7 +123,54 @@ class HttpServer:
             except AccountException as e:
                 return str(e), 400
             except Exception as e:
-                print(e)
+                traceback.print_exc()
+                return "服务器发生错误", 500
+
+        @self.api.route('/account/import', methods = ["POST"])
+        @login_required
+        @HttpServer.wrapaccountmgr()
+        async def create_accounts(accountmgr: AccountManager):
+            try:
+                file = await request.files
+                if 'file' not in file:
+                    return "请选择文件", 400
+                file = file['file']
+                if file.filename.split('.')[-1] != 'tsv':
+                    return "文件格式错误", 400
+                data = file.read().decode()
+                ok, msg = await accountmgr.create_accounts_from_tsv(data)
+                return msg, 200 if ok else 400
+            except ValueError as e:
+                return str(e), 400
+            except Exception as e:
+                traceback.print_exc()
+                return "服务器发生错误", 500
+
+        @self.api.route('/', methods = ["DELETE"])
+        @login_required
+        @HttpServer.wrapaccountmgr()
+        async def delete_qq(accountmgr: AccountManager):
+            try:
+                accountmgr.delete_mgr()
+                logout_user()
+                return "删除QQ成功", 200
+            except AccountException as e:
+                return str(e), 400
+            except Exception as e:
+                traceback.print_exc()
+                return "服务器发生错误", 500
+
+        @self.api.route('/account', methods = ["DELETE"])
+        @login_required
+        @HttpServer.wrapaccountmgr()
+        async def delete_account(accountmgr: AccountManager):
+            try:
+                accountmgr.delete_all_accounts()
+                return "删除账号成功", 200
+            except AccountException as e:
+                return str(e), 400
+            except Exception as e:
+                traceback.print_exc()
                 return "服务器发生错误", 500
 
         @self.api.route('/account/sync', methods = ["POST"])
@@ -130,7 +191,7 @@ class HttpServer:
             except AccountException as e:
                 return str(e), 400
             except Exception as e:
-                print(e)
+                traceback.print_exc()
                 return "服务器发生错误", 500
 
         @self.api.route('/account/<string:acc>', methods = ['GET'])
@@ -153,6 +214,8 @@ class HttpServer:
                     account.data.password = data['password']
                 if 'channel' in data:
                     account.data.channel = data['channel']
+                if 'batch_accounts' in data:
+                    account.data.batch_accounts = data['batch_accounts']
                 return "保存账户信息成功", 200
             elif request.method == "DELETE":
                 account.delete()
@@ -160,25 +223,12 @@ class HttpServer:
             else:
                 return "", 404
 
-        @self.api.route('/account/<string:acc>/daily', methods = ['GET'])
+        @self.api.route('/account/<string:acc>/<string:modules_key>', methods = ['GET'])
         @login_required
         @HttpServer.wrapaccountmgr(readonly = True)
         @HttpServer.wrapaccount(readonly= True)
-        async def get_daily_config(mgr: Account):
-            if request.method == 'GET':
-                return mgr.generate_daily_info()
-            else:
-                return "", 404
-
-        @self.api.route('/account/<string:acc>/tools', methods = ['GET'])
-        @login_required
-        @HttpServer.wrapaccountmgr(readonly = True)
-        @HttpServer.wrapaccount(readonly= True)
-        async def get_tools_config(mgr: Account):
-            if request.method == 'GET':
-                return mgr.generate_tools_info()
-            else:
-                return "", 404
+        async def get_modules_config(mgr: Account, modules_key: str):
+            return mgr.generate_modules_info(modules_key)
 
         @self.api.route('/account/<string:acc>/config', methods = ['PUT'])
         @login_required
@@ -195,7 +245,7 @@ class HttpServer:
         @HttpServer.wrapaccount()
         async def do_daily(mgr: Account):
             try:
-                await mgr.do_daily()
+                await mgr.do_daily(mgr._parent.secret.clan)
                 return mgr.generate_result_info(), 200
             except ValueError as e:
                 return str(e), 400
@@ -203,18 +253,37 @@ class HttpServer:
                 traceback.print_exc()
                 return "服务器发生错误", 500
 
-        @self.api.route('/account/<string:acc>/daily_result/<string:safe_time>', methods = ['GET'])
+        @self.api.route('/account/<string:acc>/daily_result', methods = ['GET'])
         @login_required
         @HttpServer.wrapaccountmgr(readonly = True)
         @HttpServer.wrapaccount(readonly= True)
-        async def daily_result(mgr: Account, safe_time: str):
+        async def daily_result_list(mgr: Account):
             try:
-                resp = await mgr.get_daily_result_from_time(safe_time)
+                resp = mgr.get_daily_result_list()
+                resp = [r.response('/daily/api/account/{}' + '/daily_result/' + str(r.key)) for r in resp]
+                return resp, 200
+            except ValueError as e:
+                return str(e), 400
+            except Exception as e:
+                traceback.print_exc()
+                return "服务器发生错误", 500
+
+        @self.api.route('/account/<string:acc>/daily_result/<string:key>', methods = ['GET'])
+        @login_required
+        @HttpServer.wrapaccountmgr(readonly = True)
+        @HttpServer.wrapaccount(readonly= True)
+        async def daily_result(mgr: Account, key: str):
+            try:
+                resp_text = request.args.get('text', 'false').lower()
+                resp = await mgr.get_daily_result_from_key(key)
                 if not resp:
                     return "无结果", 404
-                img = await drawer.draw_tasks_result(resp)
-                bytesio = await drawer.img2bytesio(img)
-                return await send_file(bytesio, mimetype='image/jpg')
+                if resp_text == 'false':
+                    img = await drawer.draw_tasks_result(resp)
+                    bytesio = await drawer.img2bytesio(img)
+                    return await send_file(bytesio, mimetype='image/jpg')
+                else:
+                    return resp.to_json(), 200
             except ValueError as e:
                 return str(e), 400
             except Exception as e:
@@ -228,16 +297,13 @@ class HttpServer:
         async def do_single(mgr: Account):
             data = await request.get_json()
             order = data.get("order", "")
-            resp_text = request.args.get('text', 'false').lower()
             try:
-                resp, _ = await mgr.do_from_key(deepcopy(mgr.client.keys), order)
-                if resp_text == 'false':
-                    img = await drawer.draw_task_result(resp)
-                    bytesio = await drawer.img2bytesio(img)
-                    return await send_file(bytesio, mimetype='image/jpg')
-                else:
-                    return resp.log, 200
+                await mgr.do_from_key(deepcopy(mgr.client.keys), order, mgr._parent.secret.clan)
+                resp = mgr.get_single_result_list(order)
+                resp = [r.response('/daily/api/account/{}' + f'/single_result/{order}/{r.key}') for r in resp]
+                return resp, 200
             except ValueError as e:
+                traceback.print_exc()
                 return str(e), 400
             except Exception as e:
                 traceback.print_exc()
@@ -247,10 +313,25 @@ class HttpServer:
         @login_required
         @HttpServer.wrapaccountmgr(readonly = True)
         @HttpServer.wrapaccount(readonly= True)
-        async def single_result(mgr: Account, order: str):
+        async def single_result_list(mgr: Account, order: str):
+            try:
+                resp = mgr.get_single_result_list(order)
+                resp = [r.response('/daily/api/account/{}' + f'/single_result/{order}/{r.key}') for r in resp]
+                return resp, 200
+            except ValueError as e:
+                return str(e), 400
+            except Exception as e:
+                traceback.print_exc()
+                return "服务器发生错误", 500
+
+        @self.api.route('/account/<string:acc>/single_result/<string:order>/<string:key>', methods = ['GET'])
+        @login_required
+        @HttpServer.wrapaccountmgr(readonly = True)
+        @HttpServer.wrapaccount(readonly= True)
+        async def single_result(mgr: Account, order: str, key: str):
             resp_text = request.args.get('text', 'false').lower()
             try:
-                resp = await mgr.get_single_result(order)
+                resp = await mgr.get_single_result_from_key(order, key)
                 if not resp:
                     return "无结果", 404
 
@@ -259,25 +340,47 @@ class HttpServer:
                     bytesio = await drawer.img2bytesio(img)
                     return await send_file(bytesio, mimetype='image/jpg')
                 else:
-                    return resp.log, 200
+                    return resp.to_json(), 200
             except ValueError as e:
                 return str(e), 400
             except Exception as e:
                 traceback.print_exc()
                 return "服务器发生错误", 500
 
-        @self.api.route('/account/<string:acc>/query_validate', methods = ['GET'])
+        @self.api.route('/query_validate', methods = ['GET'])
         @login_required
         @HttpServer.wrapaccountmgr(readonly = True)
-        @HttpServer.wrapaccount(readonly = True)
-        async def query_validate(mgr: Account):
-            from ..sdk.validator import validate_dict, ValidateInfo
-            if mgr.data.username not in validate_dict:
-                return ValidateInfo(status="empty").to_dict(), 200
-            else:
-                ret = validate_dict[mgr.data.username].to_dict()
-                del validate_dict[mgr.data.username]
-                return ret, 200
+        async def query_validate(accountmgr: AccountManager):
+            from ..sdk.validator import validate_dict
+            if "text/event-stream" not in request.accept_mimetypes:
+                return "", 400
+
+            server_id = secrets.token_urlsafe(8)
+            self.validate_server[accountmgr.qid] = server_id
+
+            async def send_events(qid, server_id):
+                for _ in range(30):
+                    if self.validate_server[qid] != server_id:
+                        break
+                    if qid in validate_dict and validate_dict[qid]:
+                        ret = validate_dict[qid].pop().to_json()
+                        id = secrets.token_urlsafe(8)
+                        yield f'''id: {id}
+retry: 1000
+data: {ret}\n\n'''
+                    else:
+                        await asyncio.sleep(1)
+
+            response = await quart.make_response(
+                send_events(accountmgr.qid, server_id),
+                {
+                    'Content-Type': 'text/event-stream',
+                    'Cache-Control': 'no-cache',
+                    'Transfer-Encoding': 'chunked',
+                },
+            )
+            response.timeout = None
+            return response
 
         @self.api.route('/validate', methods = ['POST'])
         async def validate(): # TODO think to check login or not
@@ -290,7 +393,7 @@ class HttpServer:
             validate_ok_dict[id] = ValidateInfo.from_dict(data)
             return "", 200
 
-        @self.api.route('/login/qq', methods = ['POST'])
+        @self.api_limit.route('/login/qq', methods = ['POST'])
         @rate_limit(1, timedelta(seconds=1))
         @rate_limit(3, timedelta(minutes=1))
         async def login_qq():
@@ -307,7 +410,7 @@ class HttpServer:
             else:
                 return "无效的QQ或密码", 400
 
-        @self.api.route('/register', methods = ['POST'])
+        @self.api_limit.route('/register', methods = ['POST'])
         @rate_limit(1, timedelta(minutes=1))
         async def register():
             data = await request.get_json()
@@ -326,7 +429,7 @@ class HttpServer:
             except UserException as e:
                 return str(e), 400
             except Exception as e:
-                print(e)
+                traceback.print_exc()
                 return "服务器发生错误", 500
 
         @self.api.route('/logout', methods = ['POST'])
