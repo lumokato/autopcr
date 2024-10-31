@@ -952,6 +952,11 @@ class pcrclient(apiclient):
         req.dungeon_area_id = self.data.dungeon_area_id
         return (await self.request(req)).dispatch_unit_list
 
+    async def clan_other(self, clan_id:int):
+        req = OtherClanInfoRequest()
+        req.clan_id = clan_id
+        return await self.request(req)
+
     async def clan_like(self, viewer_id):
         req = ClanLikeRequest()
         req.target_viewer_id = viewer_id
@@ -981,15 +986,14 @@ class pcrclient(apiclient):
         req.wac_auto_option_flag = 1
         return await self.request(req)
 
-    async def borrow_dungeon_member(self, viewer_id):
+    async def borrow_dungeon_member(self, viewer_id, unit_id):
         if not self.data.dungeon_avaliable: return
         if self.data.dungeon_area_id != 0:
             await self.reset_dungeon()
         area = await self.enter_dungeon(31001) # 云海的山脉
+        # 捐赠角色选取移至sweep.py, 这里直接进
         for unit in await self.get_dungeon_unit():
             if unit.owner_viewer_id == viewer_id:
-                if unit.unit_data.unit_level > self.data.team_level + self.data.settings.dungeon.support_lv_band:
-                    continue
                 req = DeckUpdateRequest()
                 req.deck_number = 4
                 req.unit_id_1 = 1
@@ -1001,8 +1005,8 @@ class pcrclient(apiclient):
                 req = DungeonBattleStartRequest()
                 req.quest_id = 31001001 # 云海的山脉第一层
                 dispatch_unit = DungeonBattleStartUnit()
-                dispatch_unit.owner_viewer_id = unit.owner_viewer_id
-                dispatch_unit.unit_id = unit.unit_data.id
+                dispatch_unit.owner_viewer_id = viewer_id
+                dispatch_unit.unit_id = unit_id
                 empty_unit = DungeonBattleStartUnit()
                 empty_unit.owner_viewer_id = self.viewer_id
                 empty_unit.unit_id = 0
