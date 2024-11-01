@@ -160,21 +160,16 @@ class underground_donate(Module):
             # 查询当前工会角色
             mem_list = []
             req = await client.clan_other(client.data.clan)
-            if 'clan' not in req:
-                raise AbortError("未识别工会信息")
-            members = req['clan']['members']
-            for mem in members:
-                mem_list.append(mem['viewer_id'])
+            for mem in req.clan.members:
+                mem_list.append(int(mem.viewer_id))
             # 选择捐献的id
             for donate_id in donate_user_list:
-                if donate_id in mem_list:
+                if int(donate_id) in mem_list:
                     profile = await client.get_profile(int(donate_id))
-                    if 'clan_support_units' in profile:
-                        for unit in profile['clan_support_units']:
-                            if unit['position'] < 3 and int(unit['unit_data']['unit_level']) > user_unit[1] and int(
-                                    unit['unit_data']['unit_level']) - client.data.team_level < client.data.settings.dungeon.support_lv_band:
-                                # 添加角色id、等级、用户id
-                                user_unit = [int(unit['unit_data']['id']), int(unit['unit_data']['unit_level']), int(donate_id)]
+                    for unit in profile.clan_support_units:
+                        if unit.position < 3 and unit.unit_data.unit_level > user_unit[1] and unit.unit_data.unit_level - client.data.team_level < client.data.settings.dungeon.support_lv_band:
+                            # 添加角色id、等级、用户id
+                            user_unit = [unit.unit_data.id, unit.unit_data.unit_level, int(donate_id)]
             return user_unit
 
         async def do_donate():            
@@ -182,6 +177,8 @@ class underground_donate(Module):
             if user_unit[0]:
                 await client.borrow_dungeon_member(user_unit[2], user_unit[0])
                 self._log(f"已捐赠给{user_unit[2]}角色{db.unit_data[user_unit[0]].unit_name}")
+            else:
+                self._log(f"无可用捐赠用户")
 
         rest = infos.rest_challenge_count[0].count          
         if rest:

@@ -1020,9 +1020,9 @@ class pcrclient(apiclient):
                 req.disable_skin = 1
                 req.support_battle_rarity = 0
                 await self.request(req)
-                req = DungeonBattleRetireRequest()
-                req.quest_id = 31001001
-                await self.request(req)
+                # req = DungeonBattleRetireRequest()
+                # req.quest_id = 31001001
+                # await self.request(req)
                 break
         await self.reset_dungeon()
 
