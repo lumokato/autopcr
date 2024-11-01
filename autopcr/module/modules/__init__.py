@@ -95,6 +95,7 @@ daily_modules = ModuleList(
         clanbattle_shop,
         
         clan_equip_request,
+        clan_equip_donate,
         love_up,
         main_story_reading,
         tower_story_reading,

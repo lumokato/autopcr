@@ -619,7 +619,7 @@ class pcrclient(apiclient):
         req.current_equip_num = self.data.get_inventory((eInventoryType.Equip, request.equip_id))
         req.donation_num = times
         req.message_id = request.message_id
-        return await self.request(req)
+        return await (self.request(req) if req.current_equip_num >= req.donation_num else 0)
     
     async def quest_skip(self, quest: int, times: int):
         req = QuestSkipRequest()
@@ -668,7 +668,7 @@ class pcrclient(apiclient):
         req.wait_interval = 3
         resp = await self.request(req)
         times = {msg.message_id : msg.create_time for msg in resp.clan_chat_message if msg.message_type == eClanChatMessageType.DONATION}
-        return (equip for equip in resp.equip_requests if times[equip.message_id] > self.server_time - 28800)
+        return [equip for equip in resp.equip_requests if times[equip.message_id] > self.server_time - 28800]
     
     async def recover_stamina(self, recover_count: int = 1):
         req = ShopRecoverStaminaRequest()
