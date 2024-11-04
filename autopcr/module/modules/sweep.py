@@ -518,8 +518,8 @@ class starcup1_sweep(starcup_sweep):
     def quest_id(self) -> int:
         return 19001001
 
-@inttype("travel_speed_up_paper_threshold", "加速阈值", 6, list(range(12)))
-@inttype("travel_target_day", "轮转天数", 7, [2, 3, 5, 7, 10])
+@inttype("travel_speed_up_paper_threshold", "加速阈值", 6, list(range(13)))
+@singlechoice("travel_target_day", "轮转天数", 7, [2, 3, 5, 7, 10])
 @multichoice("travel_target_quest3", "轮转目标3", ['1-2','1-3','1-5'], db.travel_quest_candidate)
 @multichoice("travel_target_quest2", "轮转目标2", ['1-4'], db.travel_quest_candidate)
 @multichoice("travel_target_quest1", "轮转目标1", ['1-1'], db.travel_quest_candidate)
@@ -528,7 +528,7 @@ class starcup1_sweep(starcup_sweep):
 自动根据轮转进行探险，按轮转时间进行目标切换，需保持三支队探险。
 切换时若一轮剩余时间小于阈值且可加速时则加速，否则直接撤退。
 '''.strip())
-@default(True)
+@default(False)
 class travel_round(Module):
     def is_finish_quest(self, quest: TravelQuestInfo) -> bool:
         now = int(time.time())
