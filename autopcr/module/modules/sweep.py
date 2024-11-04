@@ -25,7 +25,7 @@ import math
 @singlechoice('travel_quest_equip_event_strategy', "装备事件策略", '赌狗', ['保守','赌狗','随机'])
 @inttype('travel_quest_speed_up_paper_hold', "加速券保留", 6, list(range(3001)))
 @name("探险续航")
-@default(True)
+@default(False)
 class travel_quest_sweep(Module):
     def can_receive_count(self, quest: TravelQuestInfo) -> int:
         st = quest.travel_start_time
