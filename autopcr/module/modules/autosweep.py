@@ -105,12 +105,12 @@ class smart_normal_sweep(Module):
             raise 
         finally:
             if clean_cnt:
-                msg = '\n'.join((db.quest_name[quest] if quest in db.quest_name else f"未知关卡{quest}") +
+                msg = '\n'.join(db.get_quest_name(quest) +
                 f": 刷取{cnt}次" for quest, cnt in clean_cnt.items())
                 self._log(msg)
                 self._log("---------")
             if tmp:
-                self._log(await client.serlize_reward(tmp))
+                self._log(await client.serlize_reward(tmp, filter=lambda x: db.is_equip(x)))
 
 
 class simple_demand_sweep_base(Module):
@@ -118,6 +118,8 @@ class simple_demand_sweep_base(Module):
     async def get_need_list(self, client: pcrclient) -> List[Tuple[ItemType, int]]: ...
     def get_need_quest(self, token: ItemType) -> List[QuestDatum]: ...
     def get_max_times(self, client: pcrclient, quest_id: int) -> int: ...
+    def filter_reward_func(self) -> Callable[[ItemType], bool]:
+        return lambda x: True
 
     async def do_task(self, client: pcrclient):
 
@@ -154,13 +156,13 @@ class simple_demand_sweep_base(Module):
             raise 
         finally:
             if clean_cnt:
-                msg = '\n'.join((db.quest_name[quest] if quest in db.quest_name else f"未知关卡{quest}") +
+                msg = '\n'.join(db.get_quest_name(quest) +
                 f": 刷取{cnt}次" for quest, cnt in clean_cnt.items())
                 self._log(msg)
                 self._log("---------")
             if tmp:
-                self._log(await client.serlize_reward(tmp))
-            if not self.log and not self.warn:
+                self._log(await client.serlize_reward(tmp, filter=self.filter_reward_func()))
+            if not self.log:
                 self._log("需刷取的图均无次数")
                 raise SkipError()
 
@@ -187,6 +189,9 @@ class smart_hard_sweep(simple_demand_sweep_base):
 
         return need_list
 
+    def filter_reward_func(self) -> Callable[[ItemType], bool]:
+        return lambda x: db.is_unit_memory(x)
+
     def get_need_quest(self, token: ItemType) -> List[QuestDatum]:
         return db.memory_hard_quest.get(token, [])
 
@@ -212,6 +217,9 @@ class smart_shiori_sweep(simple_demand_sweep_base):
             x[1] * reverse))
 
         return need_list
+
+    def filter_reward_func(self) -> Callable[[ItemType], bool]:
+        return lambda x: db.is_unit_memory(x)
 
     def get_need_quest(self, token: ItemType) -> List[ShioriQuest]:
         return db.memory_shiori_quest.get(token, [])
@@ -264,6 +272,9 @@ class mirai_very_hard_sweep(simple_demand_sweep_base):
         need_list = sorted(need_list, key=lambda x: x[1], reverse=True)
         return need_list
 
+    def filter_reward_func(self) -> Callable[[ItemType], bool]:
+        return lambda x: db.is_unit_pure_memory(x)
+
     def get_need_quest(self, token: ItemType) -> List[QuestDatum]:
         return db.pure_memory_quest.get(token, [])
 
@@ -286,6 +297,9 @@ class smart_very_hard_sweep(simple_demand_sweep_base):
             raise SkipError("所有纯净碎片均已盈余")
 
         return need_list
+
+    def filter_reward_func(self) -> Callable[[ItemType], bool]:
+        return lambda x: db.is_unit_pure_memory(x)
 
     def get_need_quest(self, token: ItemType) -> List[QuestDatum]:
         return db.pure_memory_quest.get(token, [])
@@ -335,7 +349,7 @@ class DIY_sweep(Module):
                 break
         
         if clean_cnt:
-                msg = '\n'.join((db.quest_name[quest] if quest in db.quest_name else f"未知关卡{quest}") +
+                msg = '\n'.join(db.get_quest_name(quest) +
                 f": 刷取{cnt}次" for quest, cnt in clean_cnt.items())
                 self._log(msg)
                 self._log("---------")
