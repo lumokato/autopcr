@@ -752,7 +752,7 @@ class database():
                 1: '铜装',
                 2: '银装',
                 3: '金装',
-                4: '粉装'
+                4: '恭喜您得到了超级稀有的粉装'
             }
     def get_inventory_name(self, item: InventoryInfo) -> str:
         try:
