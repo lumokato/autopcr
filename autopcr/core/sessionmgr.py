@@ -79,7 +79,9 @@ class sessionmgr(Component[apiclient]):
         if os.path.exists(self.cacheFile):
             with open(self.cacheFile, 'r') as fp:
                 self._sdkaccount = json.load(fp)
-        while True:
+        count = 0
+        while count < 10:
+            count += 1
             try:
                 current = self._container.servers[self._container.active_server]
                 self._container.servers = [f'https://{server}'.replace('\t', '') for server in (await next.request(SourceIniIndexRequest())).server]
@@ -125,6 +127,9 @@ class sessionmgr(Component[apiclient]):
                 break
             except ApiException:
                 pass
+        if count == 10:
+            raise PanicError("登录10次失败，请等待服务器网络恢复")
+        
 
     async def request(self, request: Request[TResponse], next: RequestHandler) -> TResponse:
         if not self._logged:
