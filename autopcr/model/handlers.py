@@ -6,8 +6,8 @@ from .requests import *
 from ..core.datamgr import datamgr
 from ..db.database import db
 from .enums import eEventSubStoryStatus
-from pydantic.fields import ModelField
 from typing import Optional
+import json as json_module
 
 def handles(cls):
     cls.__base__.update = cls.update
@@ -282,6 +282,8 @@ class LoadIndexResponse(responses.LoadIndexResponse):
         if self.user_equip:
             for inv in self.user_equip:
                 mgr.update_inventory(inv)
+        if self.user_ex_equip:
+            mgr.ex_equips = {equip.serial_id: equip for equip in self.user_ex_equip}
         mgr.unit = {unit.id: unit for unit in self.unit_list} if self.unit_list else {}
         mgr.unit_love_data = {unit.chara_id: unit for unit in self.user_chara_info} if self.user_chara_info else {}
         mgr.growth_unit = {unit.unit_id: unit for unit in self.growth_unit_list} if self.growth_unit_list else {}
@@ -460,9 +462,9 @@ class SpecialDungeonEnterAreaResponse(responses.SpecialDungeonEnterAreaResponse)
 class DungeonResetResponse(responses.DungeonResetResponse):
     async def update(self, mgr: datamgr, request):
         mgr.dungeon_area_id = 0
-        type = self.dungeon_area[0].dungeon_type
+        
         for count in self.rest_challenge_count:
-            if count.dungeon_type == type:
+            if count.dungeon_type == 1:
                 mgr.dungeon_avaliable = count.count > 0
                 break
 
@@ -605,8 +607,140 @@ class EquipEnhanceResponse(responses.EquipEnhanceResponse):
         if self.user_gold:
             mgr.gold = self.user_gold
 
+@handles
+class UniqueEquipEnhanceResponse(responses.UniqueEquipEnhanceResponse):
+    async def update(self, mgr: datamgr, request):
+        if self.item_list:
+            for item in self.item_list:
+                mgr.update_inventory(item)
+        mgr.unit[self.unit_data.id] = self.unit_data
+        if self.user_gold:
+            mgr.gold = self.user_gold
+
+@handles
+class UniqueEquipRankupResponse(responses.UniqueEquipRankupResponse):
+    async def update(self, mgr: datamgr, request):
+        if self.item_list:
+            for item in self.item_list:
+                mgr.update_inventory(item)
+        mgr.unit[self.unit_data.id] = self.unit_data
+        if self.user_gold:
+            mgr.gold = self.user_gold
+        if self.equip_list:
+            for equip in self.equip_list:
+                mgr.update_inventory(equip)
+
+@handles
+class EquipmentFreeMultiEnhanceUniqueResponse(responses.EquipmentFreeMultiEnhanceUniqueResponse):
+    async def update(self, mgr: datamgr, request):
+        mgr.unit[self.unit_data.id] = self.unit_data
+        if self.equip_list:
+            for equip in self.equip_list:
+                mgr.update_inventory(equip)
+
+@handles
+class UniqueEquipCraftResponse(responses.UniqueEquipCraftResponse):
+    async def update(self, mgr: datamgr, request):
+        if self.item_list:
+            for item in self.item_list:
+                mgr.update_inventory(item)
+        if self.equip_list:
+            for equip in self.equip_list:
+                mgr.update_inventory(equip)
+        if self.user_gold:
+            mgr.gold = self.user_gold
+
+@handles
+class UniqueEquipMultiEnhanceResponse(responses.UniqueEquipMultiEnhanceResponse):
+    async def update(self, mgr: datamgr, request):
+        mgr.unit[self.unit_data.id] = self.unit_data
+        if self.item_list:
+            for item in self.item_list:
+                mgr.update_inventory(item)
+        if self.equip_list:
+            for equip in self.equip_list:
+                mgr.update_inventory(equip)
+        if self.user_gold:
+            mgr.gold = self.user_gold
+
+@handles
+class UnitSetGrowthItemUniqueResponse(responses.UnitSetGrowthItemUniqueResponse):
+    async def update(self, mgr: datamgr, request):
+        if self.unit_data:
+            mgr.unit[self.unit_data.id] = self.unit_data
+        if self.item_data:
+            for item in self.item_data:
+                mgr.update_inventory(item)
+        if self.growth_parameter_list:
+            mgr.growth_unit.update(
+                    {request.unit_id:
+                         GrowthInfo(unit_id=request.unit_id, growth_parameter_list=self.growth_parameter_list)
+                     })
+
+@handles
+class ChangeRarityResponse(responses.ChangeRarityResponse):
+    async def update(self, mgr: datamgr, request):
+        if self.unit_data_list:
+            for unit in self.unit_data_list:
+                mgr.unit[unit.id] = unit
+
+@handles
+class TravelReceiveAllResponse(responses.TravelReceiveAllResponse):
+    async def update(self, mgr: datamgr, request):
+        if self.user_gold:
+            mgr.gold = self.user_gold
+        for result in self.travel_result:
+            for item in result.reward_list:
+                mgr.update_inventory(item)
+
+@handles
+class TravelReceiveResponse(responses.TravelReceiveResponse):
+    async def update(self, mgr: datamgr, request):
+        if self.user_gold:
+            mgr.gold = self.user_gold
+        for result in self.travel_result:
+            for item in result.reward_list:
+                mgr.update_inventory(item)
+
+@handles
+class TravelRetireResponse(responses.TravelRetireResponse):
+    async def update(self, mgr: datamgr, request):
+        if self.user_gold:
+            mgr.gold = self.user_gold
+        if self.travel_result:
+            for result in self.travel_result:
+                for item in result.reward_list:
+                    mgr.update_inventory(item)
+
+@handles
+class TravelDecreaseTimeResponse(responses.TravelDecreaseTimeResponse):
+    async def update(self, mgr: datamgr, request):
+        if self.item_list:
+            for item in self.item_list:
+                mgr.update_inventory(item)
+        if self.user_jewel:
+            mgr.jewel = self.user_jewel
+
+@handles
+class TravelReceiveTopEventRewardResponse(responses.TravelReceiveTopEventRewardResponse):
+    async def update(self, mgr: datamgr, request):
+        if self.user_gold:
+            mgr.gold = self.user_gold
+        if self.user_jewel:
+            mgr.jewel = self.user_jewel
+        if self.stamina_info:
+            mgr.stamina = self.stamina_info.user_stamina
+        for item in self.reward_list:
+            mgr.update_inventory(item)
 
 # 菜 就别玩
+def custom_dict(self, *args, **kwargs):
+    original_dict = super(TravelStartRequest, self).dict(*args, **kwargs)
+    if self.action_type is not None:
+        original_dict['action_type'] = {"value__": self.action_type.value}
+    return original_dict
+TravelStartRequest.dict = custom_dict
+
 HatsuneTopResponse.__annotations__['event_status'] = HatsuneEventStatus
 HatsuneTopResponse.__fields__['event_status'].type_ = Optional[HatsuneEventStatus]
 HatsuneTopResponse.__fields__['event_status'].outer_type_ = Optional[HatsuneEventStatus]

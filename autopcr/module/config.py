@@ -30,7 +30,10 @@ class Config():
         else:
             candidates = self._candidates()
             ret = candidates[0] if candidates else ""
-            return ret if self.config_type != "multi" else []
+            if self.config_type == 'multi':
+                ret = [item for item in candidates if item in self._default]
+            return ret
+
 
     def dict(self) -> dict:
         ret = {
@@ -107,6 +110,11 @@ def multichoice(key:str, desc: str, default, candidates: Union[list, Callable], 
 def timetype(key:str, desc: str, default):
     def decorator(cls):
         return config_option(key=key, desc=desc, default=default, config_type='time')(cls)
+    return decorator
+
+def texttype(key:str, desc: str, default):
+    def decorator(cls):
+        return config_option(key=key, desc=desc, default=default, config_type='text')(cls)
     return decorator
 
 def conditional_execution1(key: str, default, desc: str = "执行条件", check: bool = True): # need login
