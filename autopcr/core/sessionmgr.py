@@ -125,7 +125,6 @@ class sessionmgr(Component[apiclient]):
             # break
         except ApiException:
             raise PanicError("登录失败，请等待服务器网络恢复")
-            pass
 
     async def request(self, request: Request[TResponse], next: RequestHandler) -> TResponse:
         if not self._logged:
