@@ -125,7 +125,7 @@ class ArenaQuery:
                     ArenaQuery._endpoint,
                     headers=ArenaQuery._headers,
                     data=ArenaQuery._dumps(data).encode('utf8'),
-                    timeout=5,
+                    timeout=20,
                 )
                 res = await resp.json()
                 res = ArenaQueryResponse.parse_obj(res)
