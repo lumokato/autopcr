@@ -92,19 +92,18 @@ async def localValidator(qq):
 #         except Exception as e:
 #             pass
 
-#     if _type == 'click':
-#         (c, s, args) = gt_obj.get_new_c_s_args(gt, challenge)
-#         st = time.time()
-#         w = gt_obj.generate_w(gt_obj.calculate_key(args), gt, challenge, str(c), s, "abcdefghijklmnop")
-#         ed = time.time()
-#         await asyncio.sleep(max(0, 2 - (ed - st)))
-#         (msg, validate) = gt_obj.verify(gt, challenge, w)
-#         info = {
-#             "challenge": challenge,
-#             "gt_user_id": userid,
-#             "validate": validate
-#         }
-#     return info
+    if _type == 'click':
+        (c, s, args) = gt_obj.get_new_c_s_args(gt, challenge)
+        cor = asyncio.sleep(2)
+        w = gt_obj.generate_w(gt_obj.calculate_key(args), gt, challenge, str(c), s, "abcdefghijklmnop")
+        await cor
+        (msg, validate) = gt_obj.verify(gt, challenge, w)
+        info = {
+            "challenge": challenge,
+            "gt_user_id": userid,
+            "validate": validate
+        }
+    return info
 
 async def remoteValidator(qq):
     print('use remote validator')
