@@ -299,7 +299,13 @@ class ex_equip_info(Module):
                 if not cb_only or db.ex_equipment_data[ex.ex_equipment_id].clan_battle_equip_flag).items()),
                 key=lambda x: (db.ex_equipment_data[x[0][0]].rarity, db.ex_equipment_data[x[0][0]].clan_battle_equip_flag, x[0][0], x[0][1]), reverse=True
                 )
-        msg = '\n'.join(f"{db.get_ex_equip_name(id, rank)}x{c}" for (id, rank), c in cnt)
+        rarity = sorted(list(db.ex_rarity_name.keys()), reverse=True)
+        rarity_count = {i: 0 for i in rarity}
+        for (id, rank), c in cnt:
+            rarity_count[db.ex_equipment_data[id].rarity] += c*(rank+1) 
+
+        msg0 = 'ex装备总计: '+', '.join(f"{db.ex_rarity_name[r]}: {rarity_count[r]}" for r in rarity) + '\n'
+        msg = msg0 + '\n'.join(f"{db.get_ex_equip_name(id, rank)}x{c}" for (id, rank), c in cnt)
         self._log(msg)
 
 @description('看看你缺了什么角色')
