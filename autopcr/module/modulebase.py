@@ -108,7 +108,7 @@ class Module:
         self.warn = []
 
         from os.path import join
-        self.cache_path: str = join(CACHE_DIR, "modules", self.key, self._parent.parent.id + ".json")
+        self.cache_path: str = join(CACHE_DIR, "modules", self.key, self._parent.id + ".json")
         self.cache_ready = False
         self._cache = {}
 
@@ -166,6 +166,8 @@ class Module:
             ok, msg = await self.do_check(client)
             if not ok:
                 raise SkipError(msg)
+            elif msg:
+                self._log(msg)
 
             await self.do_task(client)
 
