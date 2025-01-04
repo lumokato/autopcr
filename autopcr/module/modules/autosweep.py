@@ -241,12 +241,12 @@ unique_equip_2_pure_memory_id = [
         (32025, 2), # 水女仆，女仆
         (32046, 1), # 水猫剑
         (32048, 1), # 水子龙
-        (32060, 1), # 黑猫
+        (32078, 1), # 黑猫
         (32016, 2), # 暴击弓，水爆
         (32031, 1), # 万圣忍
         (32050, 1), # 万圣大眼
         (32007, 1), # 万圣布丁
-        (32058, 1), # 吃货
+        (32075, 1), # 吃货
         (32033, 1), # 奶牛
         (32023, 1), # 圣锤
         (32042, 1), # 圣千
@@ -266,7 +266,7 @@ unique_equip_2_pure_memory_id = [
         (32036, 1), # mcw
         (32020, 1), # 瓜兔
         (32004, 1), # 瓜炸
-        (32059, 1), # 妈
+        (32076, 1), # 妈
 ]
 @conditional_execution1("very_hard_sweep_run_time", ["vh庆典"])
 @description('储备专二需求的150碎片，包括' + ','.join(db.get_item_name(item_id) for item_id, _ in unique_equip_2_pure_memory_id))
@@ -277,11 +277,29 @@ class mirai_very_hard_sweep(simple_demand_sweep_base):
     async def get_need_list(self, client: pcrclient) -> List[Tuple[ItemType, int]]:
         need_list = client.data.get_pure_memory_demand_gap()
         need_list.update(Counter({(eInventoryType.Item, pure_memory_id): 150 * cnt for pure_memory_id, cnt in unique_equip_2_pure_memory_id}))
-        need_list = [(token, need) for token, need in need_list.items() if need > 0]
-        if not need_list:
+        multi_memory_dict = {
+            32075: 32058, # 吃货-水吃
+            32076: 32059, # 妈-水妈
+            32078: 32060, # 黑猫-水黑
+        }
+        surplus_dict = {}
+        new_need_list = []
+        for token, need in need_list.items():
+            if need <= 0:
+                surplus_dict[token[1]] = need
+            else:
+                new_need_list.append((token, need))
+
+        for i, need_tuple in enumerate(new_need_list):
+            if need_tuple[0][1] in list(multi_memory_dict.keys()):
+                same_chara_id = multi_memory_dict[need_tuple[0][1]]
+                if same_chara_id in list(surplus_dict.keys()):
+                    new_need_list[i] = (need_tuple[0], need_tuple[1]+surplus_dict[same_chara_id])
+
+        if not new_need_list:
             raise SkipError("所有纯净碎片均已盈余")
-        need_list = sorted(need_list, key=lambda x: x[1], reverse=True)
-        return need_list
+        new_need_list = sorted(new_need_list, key=lambda x: x[1], reverse=True)
+        return new_need_list
 
     def filter_reward_func(self) -> Callable[[ItemType], bool]:
         return lambda x: db.is_unit_pure_memory(x)
