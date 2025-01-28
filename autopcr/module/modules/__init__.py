@@ -1,12 +1,15 @@
 from dataclasses import field
 from typing import Any
 from .autosweep import *
+from .box import *
+from .nologin import *
 from .clan import *
 from .cron import *
 from .daily import *
 from .gacha import *
 from .hatsune import *
 from .room import *
+from .shiori import *
 from .shop import *
 from .story import *
 from .sweep import *
@@ -101,6 +104,7 @@ daily_modules = ModuleList(
         clan_equip_request,
         clan_equip_donate,
         love_up,
+        shiori_mission_check,
         main_story_reading,
         tower_story_reading,
         hatsune_story_reading,
@@ -134,6 +138,9 @@ tool_modules = ModuleList(
     'tool',
     [
         # cook_pudding,
+        half_schedule,
+        search_box,
+        refresh_box,
         remove_cb_support,
         travel_team_view,
         ex_equip_info,

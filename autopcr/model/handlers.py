@@ -316,7 +316,8 @@ class LoadIndexResponse(responses.LoadIndexResponse):
 class HomeIndexResponse(responses.HomeIndexResponse):
     async def update(self, mgr: datamgr, request):
         mgr.finishedQuest = set([q.quest_id for q in self.quest_list if q.result_type > 0 and q.clear_flg == 3] if self.quest_list else [] + [q.quest_id for q in self.shiori_quest_info.quest_list if q.result_type > 0 and q.clear_flg == 3] if self.shiori_quest_info and self.shiori_quest_info.quest_list else [])
-        mgr.clan = self.user_clan.clan_id
+        if self.user_clan:
+            mgr.clan = self.user_clan.clan_id
         mgr.donation_num = self.user_clan.donation_num
         mgr.dungeon_area_id = self.dungeon_info.enter_area_id
         mgr.training_quest_count = self.training_quest_count
@@ -842,6 +843,21 @@ class SupportUnitChangeSettingResponse(responses.SupportUnitChangeSettingRespons
         if self.support_time_bonus:
             for bonus in self.support_time_bonus:
                 mgr.update_inventory(bonus)
+
+@handles
+class ShioriMissionAcceptResponse(responses.ShioriMissionAcceptResponse):
+    async def update(self, mgr: datamgr, request):
+        if self.rewards:
+            for item in self.rewards:
+                mgr.update_inventory(item)
+
+        if self.team_level:
+            mgr.team_level = self.team_level
+
+        if self.stamina_info:
+            mgr.stamina = self.stamina_info.user_stamina
+            mgr.stamina_full_recovery_time = self.stamina_info.stamina_full_recovery_time
+
 
 # 菜 就别玩
 def custom_dict(self, *args, **kwargs):

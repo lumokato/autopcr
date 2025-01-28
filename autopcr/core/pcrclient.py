@@ -8,12 +8,19 @@ from ..db.database import db
 from typing import Callable, Tuple, Union
 import typing, math
 
+class eLoginStatus(Enum):
+    LOGGED = 1
+    NOT_LOGGED = 2
+    NEED_REFRESH = 3
+
 class pcrclient(apiclient):
     def __init__(self, sdk: sdkclient):
         self._base_keys = {}
         self._keys = {}
+        self.need_refresh = False
         super().__init__(sdk)
         self.data = datamgr()
+        self.data_ready = False
         from .clientpool import ComponentWrapper
         self._data_wrapper = ComponentWrapper(self.data)
         self.session = sessionmgr(sdk)
@@ -27,20 +34,29 @@ class pcrclient(apiclient):
         self._keys = {}
 
     @property
+    def id(self) -> str:
+        return self.session.id
+
+    @property
     def user_name(self) -> str:
         return self.data.user_name
 
     @property
-    def logged(self):
-        return self.session._logged
+    def logged(self) -> eLoginStatus:
+        if not self.session._logged: return eLoginStatus.NOT_LOGGED
+        elif self.need_refresh: return eLoginStatus.NEED_REFRESH
+        else: return eLoginStatus.LOGGED
 
     async def login(self):
+        self.data = datamgr()
+        self._data_wrapper.component = self.data
         await self.request(None)
+        self.data_ready = True
 
     async def logout(self):
         await self.session.clear_session()
-        self.data = datamgr()
-        self._data_wrapper.component = self.data
+        self.need_refresh = False
+        self.data_ready = False
 
     async def support_unit_get_setting(self):
         req = SupportUnitGetSettingRequest()
@@ -477,6 +493,16 @@ class pcrclient(apiclient):
         await self.story_check(story_id)
         return await self.story_view(story_id)
 
+    async def put_mme_piece(self, sub_story_id: int):
+        req = SubStoryMmePutPieceRequest()
+        req.sub_story_id = sub_story_id
+        return await self.request(req)
+
+    async def read_mme_story(self, sub_story_id: int):
+        req = SubStoryMmeReadStoryRequest()
+        req.sub_story_id = sub_story_id
+        return await self.request(req)
+
     async def read_xeh_story(self, sub_story_id: int):
         req = SubStoryXehReadStoryRequest()
         req.sub_story_id = sub_story_id
@@ -630,6 +656,14 @@ class pcrclient(apiclient):
     async def get_profile(self, user: int):
         req = ProfileGetRequest()
         req.target_viewer_id = user
+        return await self.request(req)
+
+    async def shiori_mission_receive(self, event_id: int):
+        req = ShioriMissionAcceptRequest()
+        req.event_id = event_id
+        req.type = 2
+        req.id = 0
+        req.buy_id = 0
         return await self.request(req)
 
     async def get_shiori_top(self):
@@ -1037,9 +1071,10 @@ class pcrclient(apiclient):
         req = HomeIndexRequest()
         req.message_id = 1
         req.gold_history = 0
-        req.is_first = 1
+        req.is_first = 0
         req.tips_id_list = []
         await self.request(req)
+        self.need_refresh = False
     
     async def reset_dungeon(self):
         req = DungeonResetRequest()
