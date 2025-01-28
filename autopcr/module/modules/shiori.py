@@ -8,7 +8,7 @@ from ...model.enums import *
 
 @description("领取已通关外传的任务奖励，对于未通关或未取得三星的关卡会进行提示")
 @name("领取外传任务奖励")
-@default(True)
+@default(False)
 class shiori_mission_check(Module):
     async def do_task(self, client: pcrclient):
         shiori_top = await client.get_shiori_top()
