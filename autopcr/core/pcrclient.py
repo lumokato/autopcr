@@ -658,15 +658,17 @@ class pcrclient(apiclient):
         req.target_viewer_id = user
         return await self.request(req)
 
-    async def shiori_mission_receive(self, event_id: int):
+    async def shiori_mission_receive(self, event_id: int, type: int):
         req = ShioriMissionAcceptRequest()
         req.event_id = event_id
-        req.type = 2
+        req.type = type
         req.id = 0
         req.buy_id = 0
         return await self.request(req)
 
     async def get_shiori_top(self):
+        if not self.data.is_quest_cleared(11003002):
+            raise SkipError("未解锁外传")
         req = ShioriTopRequest()
         return await self.request(req)
 
