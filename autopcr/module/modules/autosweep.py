@@ -289,8 +289,8 @@ class mirai_very_hard_sweep(simple_demand_sweep_base):
                 need_list.append(((0, kana), target[kana] - own))
         if not need_list:
             raise SkipError("所有纯净碎片均已盈余")
-        new_need_list = sorted(new_need_list, key=lambda x: x[1], reverse=True)
-        return new_need_list
+        # need_list = sorted(need_list, key=lambda x: x[1], reverse=True)
+        return need_list
 
     def filter_reward_func(self) -> Callable[[ItemType], bool]:
         return lambda x: db.is_unit_pure_memory(x)
