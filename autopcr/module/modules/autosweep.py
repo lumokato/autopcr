@@ -444,7 +444,9 @@ class last_hard_quest_sweep(DIY_sweep):
         if last_hard_quest:
             quest = []
             filtered_quests = sorted([q for q in client.data.finishedQuest if q >= 12000000 and q < 14000000], reverse=True)
-
-            if filtered_quests:
+            if len(filtered_quests) < 100:
                 quest: List[Tuple[int, int]] = [(int(id), 3) for id in filtered_quests]
+            else:
+                raise SkipError("解锁的Hard图超过100,判断为非农场号")
+        
         return quest
