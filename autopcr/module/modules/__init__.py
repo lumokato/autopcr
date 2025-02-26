@@ -75,12 +75,14 @@ daily_modules = ModuleList(
         smart_hard_sweep,
         smart_shiori_sweep,
         smart_normal_sweep,
-        last_quest_sweep,
 
         smart_very_hard_sweep,
         mirai_very_hard_sweep,
-        all_in_hatsune,
 
+        last_hard_quest_sweep,
+        last_quest_sweep,
+
+        all_in_hatsune,
         hatsune_hboss_sweep,
         hatsune_mission_accept1,
         hatsune_gacha_exchange,
