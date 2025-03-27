@@ -5,7 +5,7 @@ from ...core.apiclient import apiclient
 from ...model.error import *
 from ...model.enums import *
 from ...db.database import db
-import random
+import secrets
 
 @description('在公会中自动随机选择一位成员点赞。')
 @name("公会点赞")
@@ -21,7 +21,7 @@ class clan_like(Module):
         info = clan.clan
         members = [(x.viewer_id, x.name) for x in info.members if x.viewer_id != client.viewer_id]
         if len(members) == 0: raise AbortError("nobody's home?")
-        rnd = random.choice(members)
+        rnd = secrets.choice(members)
         await client.clan_like(rnd[0])
         self._log(f"为【{rnd[1]}】点赞")
 
