@@ -131,6 +131,9 @@ class ShopBuyResponse(responses.ShopBuyResponse):
         if self.item_data:
             for item in self.item_data:
                 mgr.update_inventory(item)
+        if self.purchase_list:
+            for item in self.purchase_list:
+                mgr.update_inventory(item)
         if self.user_jewel:
             mgr.jewel = self.user_jewel
 
@@ -140,10 +143,24 @@ class ShopBuyMultipleResponse(responses.ShopBuyMultipleResponse):
     async def update(self, mgr: datamgr, request):
         if self.user_gold:
             mgr.gold = self.user_gold
+        if self.purchase_list:
+            for item in self.purchase_list:
+                mgr.update_inventory(item)
         if self.item_data:
             for item in self.item_data:
                 mgr.update_inventory(item)
 
+@handles
+class ShopBuyBulkResponse(responses.ShopBuyBulkResponse):
+    async def update(self, mgr: datamgr, request):
+        if self.user_gold:
+            mgr.gold = self.user_gold
+        if self.purchase_list:
+            for item in self.purchase_list:
+                mgr.update_inventory(item)
+        if self.item_data:
+            for item in self.item_data:
+                mgr.update_inventory(item)
 
 @handles
 class RoomReceiveItemAllResponse(responses.RoomReceiveItemAllResponse):
@@ -315,7 +332,9 @@ class LoadIndexResponse(responses.LoadIndexResponse):
 @handles
 class HomeIndexResponse(responses.HomeIndexResponse):
     async def update(self, mgr: datamgr, request):
-        mgr.finishedQuest |= set([q.quest_id for q in self.quest_list if q.result_type > 0 and q.clear_flg == 3] if self.quest_list else [] + [q.quest_id for q in self.shiori_quest_info.quest_list if q.result_type > 0 and q.clear_flg == 3] if self.shiori_quest_info and self.shiori_quest_info.quest_list else [])
+        mgr.finishedQuest |= set(([q.quest_id for q in self.quest_list if q.result_type > 0 and q.clear_flg == 3] if self.quest_list else []) + ([q.quest_id for q in self.shiori_quest_info.quest_list if q.result_type > 0 and q.clear_flg == 3] if self.shiori_quest_info and self.shiori_quest_info.quest_list else []))
+        if self.cleared_byway_quest_id_list:
+            mgr.cleared_byway_quest_id_set |= set(self.cleared_byway_quest_id_list)
         if self.user_clan:
             mgr.clan = self.user_clan.clan_id
         if self.user_clan and self.user_clan.donation_num:

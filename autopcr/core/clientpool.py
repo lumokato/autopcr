@@ -52,6 +52,8 @@ class SessionErrorHandler(Component[apiclient]):
                 self.retry += 1
                 await self._container.logout()
                 return await self.request(request, next)
+            if "回到标题界面" in str(e):
+                await self._container.logout()
             raise
         finally:
             self.retry = 0
@@ -102,8 +104,10 @@ class PoolClientWrapper(pcrclient):
         try:
             if os.path.exists(self.cache):
                 with open(self.cache, 'rb') as f:
-                    self.data = pickle.loads(f.read())
-                    self._data_wrapper.component = self.data
+                    tmp = pickle.loads(f.read())
+                    if tmp.version == self.data.version:
+                        self.data = tmp
+                        self._data_wrapper.component = self.data
                 logger.debug("Client %s data loaded", self.data.uid)
         except:
             self.dispose()

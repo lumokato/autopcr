@@ -267,6 +267,8 @@ unique_equip_2_pure_memory_id = [
         105901, # 妈
         112201, # 魔驴
         112301, # 魔栞
+        100301, # 剑圣
+        112101, # 春女仆
 ]
 @conditional_execution1("very_hard_sweep_run_time", ["vh庆典"])
 @description('储备专二需求的150碎片，包括' + ','.join(db.get_unit_name(unit_id) for unit_id in unique_equip_2_pure_memory_id))
@@ -420,6 +422,7 @@ class last_quest_sweep(DIY_sweep):
         last_sweep_quests: List[str] = self.get_config('last_sweep_quests')
         last_sweep_quests_amount: int = int(self.get_config('last_sweep_quests_amount'))
         last_sweep_quests_count: int = int(self.get_config('last_sweep_quests_count'))
+        quest = []
         if last_sweep_quests_amount:
             filtered_quests = sorted([q for q in client.data.finishedQuest if q >= 11000000 and q < 12000000], reverse=True)
             if len(filtered_quests) > last_sweep_quests_amount:
@@ -428,4 +431,24 @@ class last_quest_sweep(DIY_sweep):
                 quest: List[Tuple[int, int]] = [(int(id), last_sweep_quests_count) for id in filtered_quests]
         else:
             quest: List[Tuple[int, int]] = [(int(id.split(':')[0]), last_sweep_quests_count) for id in last_sweep_quests]
+        return quest
+
+@description('''
+农场号临时用
+'''.strip())
+@name("刷Hard新图")
+@conditional_execution1("last_hard_quest_run_time", ['h庆典'])
+@default(True)
+@tag_stamina_consume
+class last_hard_quest_sweep(DIY_sweep):
+    async def get_start_quest(self, client: pcrclient) -> List[Tuple[int, int]]:
+        last_hard_quest: List[str] = self.get_config('last_hard_quest_run_time')
+        if last_hard_quest:
+            quest = []
+            filtered_quests = sorted([q for q in client.data.finishedQuest if q >= 12000000 and q < 14000000], reverse=True)
+            if len(filtered_quests) < 100:
+                quest: List[Tuple[int, int]] = [(int(id), 3) for id in filtered_quests]
+            else:
+                raise SkipError("解锁的Hard图超过100,判断为非农场号")
+        
         return quest
