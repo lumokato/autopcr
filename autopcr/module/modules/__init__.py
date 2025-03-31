@@ -180,6 +180,7 @@ tool_modules = ModuleList(
         pjjc_back,
         jjc_info,
         pjjc_info,
-        pjjc_shuffle_team,
+        pjjc_def_shuffle_team,
+        pjjc_atk_shuffle_team,
     ]
 )
