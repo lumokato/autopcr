@@ -48,7 +48,7 @@ class room_upper_all(Module):
 
 @description('先回赞，再随机点赞')
 @name('公会小屋点赞')
-@default(True)
+@default(False)
 class room_like_back(Module):
     async def do_task(self, client: pcrclient):
         await client.room_start()
