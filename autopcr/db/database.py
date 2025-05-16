@@ -1101,6 +1101,14 @@ class database():
             )
 
     @lazy_property
+    def wts_story_data(self) -> Dict[int, WtsStoryDatum]:
+        with self.dbmgr.session() as db:
+            return (
+                WtsStoryDatum.query(db)
+                .to_dict(lambda x: x.sub_story_id, lambda x: x)
+            )
+
+    @lazy_property
     def bmy_story_data(self) -> Dict[int, BmyStoryDatum]:
         with self.dbmgr.session() as db:
             return (
@@ -1257,6 +1265,15 @@ class database():
             return (
                 TravelAreaDatum.query(db)
                 .to_dict(lambda x: x.travel_area_id, lambda x: x)
+            )
+
+    @lazy_property
+    def travel_top_event_drama(self) -> Dict[int, List[TravelTopEventDrama]]:
+        with self.dbmgr.session() as db:
+            return (
+                TravelTopEventDrama.query(db)
+                .group_by(lambda x: x.drama_id)
+                .to_dict(lambda x: x.key, lambda x: x.to_list())
             )
 
     @lazy_property
