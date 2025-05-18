@@ -157,6 +157,7 @@ danger_modules = ModuleList(
     'danger',
     [
         gacha_start,
+        gacha_exchange_chara,
     ]
 )
 
