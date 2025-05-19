@@ -80,11 +80,12 @@ daily_modules = ModuleList(
         present_receive,
         smart_sweep,
         smart_hard_sweep,
-        smart_shiori_sweep,
         smart_normal_sweep,
 
         smart_very_hard_sweep,
         mirai_very_hard_sweep,
+        
+        smart_shiori_sweep,
 
         last_hard_quest_sweep,
         last_quest_sweep,
