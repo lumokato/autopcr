@@ -269,6 +269,9 @@ unique_equip_2_pure_memory_id = [
         112301, # 魔栞
         100301, # 剑圣
         112101, # 春女仆
+        111501, # 圣克
+        111701, # 圣yly
+        111601, # 圣诞望
 ]
 @conditional_execution1("very_hard_sweep_run_time", ["vh庆典"])
 @description('储备专二需求的150碎片，包括' + ','.join(db.get_unit_name(unit_id) for unit_id in unique_equip_2_pure_memory_id))
@@ -375,25 +378,27 @@ class DIY_sweep(Module):
             self._log(await client.serialize_reward_summary(result))
 
 @description('''
-首先按次数逐一刷取名字为start的图
+首先按次数逐一刷取名字为start和start2的图
 然后循环按次数刷取设置为loop的图
 当被动体力回复完全消耗后，刷图结束
 '''.strip())
 @name("自定义刷图")
+@conditional_execution1("start2_run_time", ['vh庆典'], desc="start2刷取庆典", check=False)
 @conditional_execution1("start_run_time", ['h庆典'], desc="start刷取庆典", check=False)
 @conditional_execution1("loop_run_time", ['n庆典'], desc="loop刷取庆典", check=False)
 @default(False)
 @tag_stamina_consume
 class smart_sweep(DIY_sweep):
     async def get_start_quest(self, client: pcrclient) -> List[Tuple[int, int]]: 
-        is_start_run_time, _ = await (self.get_config_instance('start_run_time').do_check(client))
         quest: List[Tuple[int, int]] = []
-        if is_start_run_time: 
-            self._log(f"刷取start关卡")
-            for tab in client.data.user_my_quest:
-                if tab.tab_name == 'start':
-                    for x in tab.skip_list:
-                        quest.append((x, tab.skip_count))
+        for name, value in zip(['start', 'start2'], ['start_run_time', 'start2_run_time']):
+            is_run_time, _ = await (self.get_config_instance(value).do_check(client))
+            if is_run_time:
+                self._log(f"刷取{name}关卡")
+                for tab in client.data.user_my_quest:
+                    if tab.tab_name == name:
+                        for x in tab.skip_list:
+                            quest.append((x, tab.skip_count))
         return quest
 
     async def get_loop_quest(self, client: pcrclient) -> List[Tuple[int, int]]:

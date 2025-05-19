@@ -378,6 +378,13 @@ class pcrclient(apiclient):
         req.item_info = [SendGiftData(item_id=item[1], item_num=cnt, current_item_num=self.data.get_inventory(item)) for item, cnt in cakes.items()]
         return await self.request(req)
 
+    async def gacha_exchange_point(self, exchange_id: int, unit_id: int, current_point: int):
+        req = GachaExchangePointRequest()
+        req.exchange_id = exchange_id
+        req.unit_id = unit_id
+        req.current_point = current_point
+        return await self.request(req)
+
     async def gacha_special_fes(self):
         req = GachaSpecialFesIndexRequest()
         return await self.request(req)
@@ -436,22 +443,23 @@ class pcrclient(apiclient):
                 prize_memory = sorted(prize_memory, key = lambda x: -piece_demand.get(x, 0))
             item_id = prize_memory[0]
             await self.gacha_select_prize(prizegacha_id, item_id[1])
+            target_gacha.selected_item_id = item_id[1]
         if target_gacha.select_pickup_slot_num is not None:
             pickup_id = db.gacha_data[target_gacha.id].pickup_id
             if target_gacha.select_pickup_slot_num == len(target_gacha.priority_list) and all(db.gacha_pickup[pickup_id][u].reward_id not in self.data.unit for u in target_gacha.priority_list):
                 pass
             elif auto_select_pickup or target_gacha.select_pickup_slot_num > len(target_gacha.priority_list):
                 pickup_units = [u for u in db.gacha_pickup[pickup_id].values()]
-                pickup_units.sort(key = lambda x: (x.reward_id not in self.data.unit, x.reward_id), reverse = True)
+                pickup_units.sort(key = lambda x: (x.reward_id not in self.data.unit, -x.reward_id), reverse = True)
                 pickup_units = pickup_units[:target_gacha.select_pickup_slot_num]
                 pickup_units = [u.priority for u in pickup_units]
                 if set(pickup_units) != set(target_gacha.priority_list):
                     await self.gacha_select_pickup(target_gacha.id, pickup_units)
+                    target_gacha.priority_list = pickup_units
 
         if target_gacha.exchange_id in self.data.gacha_point and  \
         self.data.gacha_point[target_gacha.exchange_id].current_point >= self.data.gacha_point[target_gacha.exchange_id].max_point:
             raise AbortError(f"已达到天井{self.data.gacha_point[target_gacha.exchange_id].current_point}pt，请上号兑换角色") 
-            # auto exchange TODO
 
         if draw_type == eGachaDrawType.Payment: # 怎么回传没有宝石数
             tot = 1500
@@ -512,6 +520,16 @@ class pcrclient(apiclient):
         await self.story_check(story_id)
         return await self.story_view(story_id)
 
+    async def read_wts_story(self, sub_story_id: int):
+        req = SubStoryWtsReadStoryRequest()
+        req.sub_story_id = sub_story_id
+        await self.request(req)
+
+    async def read_bmy_story(self, sub_story_id: int):
+        req = SubStoryBmyReadStoryRequest()
+        req.sub_story_id = sub_story_id
+        await self.request(req)
+
     async def put_mme_piece(self, sub_story_id: int):
         req = SubStoryMmePutPieceRequest()
         req.sub_story_id = sub_story_id
@@ -564,6 +582,11 @@ class pcrclient(apiclient):
 
     async def read_ske_story(self, sub_story_id: int):
         req = SubStorySkeReadStoryRequest()
+        req.sub_story_id = sub_story_id
+        await self.request(req)
+
+    async def read_dvs_story(self, sub_story_id: int):
+        req = SubStoryDvsReadStoryRequest()
         req.sub_story_id = sub_story_id
         await self.request(req)
 

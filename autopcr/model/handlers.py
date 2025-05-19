@@ -301,6 +301,7 @@ class LoadIndexResponse(responses.LoadIndexResponse):
         mgr.clan_like_count = self.clan_like_count
         mgr.user_my_quest = self.user_my_quest
         mgr.cf = self.cf
+        mgr.inventory = {}
         if self.item_list:
             for inv in self.item_list:
                 mgr.update_inventory(inv)
@@ -577,6 +578,20 @@ class SeasonPassMissionAcceptResponse(responses.SeasonPassMissionAcceptResponse)
                 mgr.update_inventory(reward)
 
 @handles
+class SubStoryWtsReadStoryResponse(responses.SubStoryWtsReadStoryResponse):
+    async def update(self, mgr: datamgr, request):
+        if self.reward_info:
+            for reward in self.reward_info:
+                mgr.update_inventory(reward)
+
+@handles
+class SubStoryBmyReadStoryResponse(responses.SubStoryBmyReadStoryResponse):
+    async def update(self, mgr: datamgr, request):
+        if self.reward_info:
+            for reward in self.reward_info:
+                mgr.update_inventory(reward)
+
+@handles
 class SubStorySkeConfirmResponse(responses.SubStorySkeConfirmResponse):
     async def update(self, mgr: datamgr, request):
         for sub_story in mgr.event_sub_story[10058].sub_story_info_list:
@@ -621,8 +636,22 @@ class SubStoryMmeReadStoryResponse(responses.SubStoryMmeReadStoryResponse):
             for reward in self.reward_info:
                 mgr.update_inventory(reward)
 
+
+class SubStoryWonReadStoryResponse(responses.SubStoryWonReadStoryResponse):
+    async def update(self, mgr: datamgr, request):
+        if self.reward_info:
+            for reward in self.reward_info:
+                mgr.update_inventory(reward)
 @handles
 class SubStoryNopReadStoryResponse(responses.SubStoryNopReadStoryResponse):
+    async def update(self, mgr: datamgr, request):
+        if self.reward_info:
+            for reward in self.reward_info:
+                mgr.update_inventory(reward)
+
+
+@handles
+class SubStoryDvsReadStoryResponse(responses.SubStoryDvsReadStoryResponse):
     async def update(self, mgr: datamgr, request):
         if self.reward_info:
             for reward in self.reward_info:
@@ -641,6 +670,7 @@ class SubStorySvdReadStoryResponse(responses.SubStorySvdReadStoryResponse):
         if self.special_reward_list:
             for reward in self.special_reward_list:
                 mgr.update_inventory(reward)
+
 
 @handles
 class SubStoryLsvReadStoryResponse(responses.SubStoryLsvReadStoryResponse):
@@ -884,6 +914,14 @@ class ShioriMissionAcceptResponse(responses.ShioriMissionAcceptResponse):
             mgr.stamina = self.stamina_info.user_stamina
             mgr.stamina_full_recovery_time = self.stamina_info.stamina_full_recovery_time
 
+@handles
+class GachaExchangePointResponse(responses.GachaExchangePointResponse):
+    async def update(self, mgr: datamgr, request):
+        if self.gacha_point_info:
+            mgr.gacha_point[self.gacha_point_info.exchange_id] = self.gacha_point_info
+        if self.reward_info_list:
+            for item in self.reward_info_list:
+                mgr.update_inventory(item)
 
 # 菜 就别玩
 def custom_dict(self, *args, **kwargs):

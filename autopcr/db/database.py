@@ -831,6 +831,15 @@ class database():
             )
 
     @lazy_property
+    def season_pack(self) -> Dict[int, SeasonPack]:
+        with self.dbmgr.session() as db:
+            return (
+                SeasonPack.query(db)
+                .where(lambda x: x.mission_id != 0)
+                .to_dict(lambda x: x.mission_id, lambda x: x)
+            )
+
+    @lazy_property
     def stationary_mission_data(self) -> Dict[int, StationaryMissionDatum]:
         with self.dbmgr.session() as db:
             return (
@@ -1092,6 +1101,22 @@ class database():
             )
 
     @lazy_property
+    def wts_story_data(self) -> Dict[int, WtsStoryDatum]:
+        with self.dbmgr.session() as db:
+            return (
+                WtsStoryDatum.query(db)
+                .to_dict(lambda x: x.sub_story_id, lambda x: x)
+            )
+
+    @lazy_property
+    def bmy_story_data(self) -> Dict[int, BmyStoryDatum]:
+        with self.dbmgr.session() as db:
+            return (
+                BmyStoryDatum.query(db)
+                .to_dict(lambda x: x.sub_story_id, lambda x: x)
+            )
+
+    @lazy_property
     def won_story_data(self) -> Dict[int, WonStoryDatum]:
         with self.dbmgr.session() as db:
             return (
@@ -1120,6 +1145,14 @@ class database():
         with self.dbmgr.session() as db:
             return (
                 XehStoryDatum.query(db)
+                .to_dict(lambda x: x.sub_story_id, lambda x: x)
+            )
+
+    @lazy_property
+    def dvs_story_data(self) -> Dict[int, DvsStoryDatum]:
+        with self.dbmgr.session() as db:
+            return (
+                DvsStoryDatum.query(db)
                 .to_dict(lambda x: x.sub_story_id, lambda x: x)
             )
 
@@ -1232,6 +1265,15 @@ class database():
             return (
                 TravelAreaDatum.query(db)
                 .to_dict(lambda x: x.travel_area_id, lambda x: x)
+            )
+
+    @lazy_property
+    def travel_top_event_drama(self) -> Dict[int, List[TravelTopEventDrama]]:
+        with self.dbmgr.session() as db:
+            return (
+                TravelTopEventDrama.query(db)
+                .group_by(lambda x: x.drama_id)
+                .to_dict(lambda x: x.key, lambda x: x.to_list())
             )
 
     @lazy_property
@@ -1351,7 +1393,7 @@ class database():
             return f"未知关卡({quest_id})"
 
     def is_daily_mission(self, mission_id: int) -> bool:
-        return mission_id in self.daily_mission_data
+        return mission_id in self.daily_mission_data or mission_id in self.season_pack
 
     def is_stationary_mission(self, mission_id: int) -> bool:
         return mission_id in self.stationary_mission_data
@@ -1488,6 +1530,10 @@ class database():
         return flow(self.hatsune_schedule.values()) \
                 .where(lambda x: now >= self.parse_time(x.start_time) and now <= self.parse_time(x.end_time)) \
                 .to_list()
+
+    def get_active_hatsune_id(self) -> List[int]:
+        active_hatsune = self.get_active_hatsune()
+        return [event.event_id for event in active_hatsune]
 
     def get_active_hatsune_name(self) -> List[str]:
         active_hatsune = self.get_active_hatsune()
@@ -1954,8 +2000,11 @@ class database():
             int(max(0, power - quest.need_power) * coeff)
         )
 
-    def unlock_unit_condition_candidate(self):
+    def unlock_unit_condition_candidate(self) -> List[int]:
         return self.unlock_unit_condition
+
+    def limit_unit_condition_candidate(self) -> List[int]:
+        return [x for x in self.unlock_unit_condition if self.unit_data[x].is_limited]
 
     def free_gacha_ids_candidate(self):
         free_gacha_campaigns = flow(self.campaign_free_gacha.values()) \
