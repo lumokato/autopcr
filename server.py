@@ -47,6 +47,7 @@ sv_help = f"""
 - {prefix}日常报告 [0|1|2|3] 最近四次清日常报告
 - {prefix}定时日志 查看定时运行状态
 - {prefix}查角色 [昵称] 查看角色练度
+- {prefix}查缺称号 查看缺少的称号
 - {prefix}查缺角色 查看缺少的限定常驻角色
 - {prefix}查ex装备 [会战] 查看ex装备库存
 - {prefix}查探险编队 根据记忆碎片角色编队战力相当的队伍
@@ -834,6 +835,10 @@ async def pjjc_atk_shuffle_team(botev: BotEvent):
 
 @register_tool("查缺角色", "missing_unit")
 async def find_missing_unit(botev: BotEvent):
+    return {}
+
+@register_tool("查缺称号", "missing_emblem")
+async def find_missing_emblem(botev: BotEvent):
     return {}
 
 @register_tool("查角色", "search_unit")

@@ -207,14 +207,24 @@ class ex_equip_info(Module):
                 if not cb_only or db.ex_equipment_data[ex.ex_equipment_id].clan_battle_equip_flag).items()),
                 key=lambda x: (db.ex_equipment_data[x[0][0]].rarity, db.ex_equipment_data[x[0][0]].clan_battle_equip_flag, x[0][0], x[0][1]), reverse=True
                 )
-        rarity = sorted(list(db.ex_rarity_name.keys()), reverse=True)
-        rarity_count = {i: 0 for i in rarity}
-        for (id, rank), c in cnt:
-            rarity_count[db.ex_equipment_data[id].rarity] += c*(rank+1) 
-
-        msg0 = 'ex装备总计: '+', '.join(f"{db.ex_rarity_name[r]}: {rarity_count[r]}" for r in rarity) + '\n'
-        msg = msg0 + '\n'.join(f"{db.get_ex_equip_name(id, rank)}x{c}" for (id, rank), c in cnt)
+        pink_cnt = sum(1 * c for (id, rank), c in cnt if db.ex_equipment_data[id].rarity == 4)
+        history_pink_cnt = sum((rank + 1) * c for (id, rank), c in cnt if db.ex_equipment_data[id].rarity == 4)
+        self._log(f"粉装数量：{pink_cnt}/{history_pink_cnt}")
+        msg = '\n'.join(f"{db.get_ex_equip_name(id, rank)}x{c}" for (id, rank), c in cnt)
         self._log(msg)
+
+@description('看看你缺了什么称号')
+@name('查缺称号')
+@default(True)
+class missing_emblem(Module):
+    async def do_task(self, client: pcrclient):
+        emblem_top = await client.emblem_top()
+        missing_emblem = set(db.emblem_data.keys()) - set(emblem.emblem_id for emblem in emblem_top.user_emblem_list)
+        if not missing_emblem:
+            self._log("全称号玩家！你竟然没有缺少的称号！")
+        else:
+            self._log(f"缺少{len(missing_emblem)}个称号")
+            self._log('\n'.join(f"{db.emblem_data[id].emblem_name}-{db.emblem_mission_data[db.emblem_data[id].description_mission_id].description if db.emblem_data[id].description_mission_id in db.emblem_mission_data else ''}" for id in missing_emblem))
 
 @description('看看你缺了什么角色')
 @name('查缺角色')
