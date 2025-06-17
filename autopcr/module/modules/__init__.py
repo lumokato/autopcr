@@ -68,6 +68,7 @@ daily_modules = ModuleList(
         special_underground_skip,
         tower_cloister_sweep,
         jjc_reward,
+        xinsui7_sweep,
         xinsui6_sweep,
         xinsui5_sweep,
         xinsui4_sweep,
@@ -193,24 +194,17 @@ danger_modules = ModuleList(
     hidden_in_clan=True,
 )
 
-caravan_modules = ModuleList(
-    '大富翁',
-    'caravan',
-    [
-        caravan_play,
-        caravan_shop_buy,
-    ]
-)
-
 tool_modules = ModuleList(
     '工具',
     'tool',
     [
         # cook_pudding,
         half_schedule,
+        caravan_play,
+        caravan_shop_buy,
         ex_equip_info,
-        missing_emblem,
         travel_team_view,
+        missing_emblem,
         get_clan_support_unit,
         clear_my_party,
         remove_cb_support,
