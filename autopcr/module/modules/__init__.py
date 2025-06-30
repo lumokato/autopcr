@@ -3,6 +3,7 @@ from typing import Any
 from .autosweep import *
 from .box import *
 from .nologin import *
+from .caravan import *
 from .clan import *
 from .cron import *
 from .daily import *
@@ -67,6 +68,7 @@ daily_modules = ModuleList(
         special_underground_skip,
         tower_cloister_sweep,
         jjc_reward,
+        xinsui7_sweep,
         xinsui6_sweep,
         xinsui5_sweep,
         xinsui4_sweep,
@@ -198,9 +200,11 @@ tool_modules = ModuleList(
     [
         # cook_pudding,
         half_schedule,
+        caravan_play,
+        caravan_shop_buy,
         ex_equip_info,
-        missing_emblem,
         travel_team_view,
+        missing_emblem,
         get_clan_support_unit,
         clear_my_party,
         remove_cb_support,

@@ -272,6 +272,7 @@ unique_equip_2_pure_memory_id = [
         111501, # 圣克
         111701, # 圣yly
         111601, # 圣诞望
+        107501, # 水吃
 ]
 @conditional_execution1("very_hard_sweep_run_time", ["vh庆典"])
 @description('储备专二需求的150碎片，包括' + ','.join(db.get_unit_name(unit_id) for unit_id in unique_equip_2_pure_memory_id))
@@ -285,7 +286,7 @@ class mirai_very_hard_sweep(simple_demand_sweep_base):
         need_list = []
         for unit in unique_equip_2_pure_memory_id:
             kana = db.unit_data[unit].kana
-            target[kana] += 150
+            target[kana] += 150 if unit not in client.data.unit or len(client.data.unit[unit].unique_equip_slot) < 2 or not client.data.unit[unit].unique_equip_slot[1].is_slot else 0
             own = -sum(pure_gap[db.unit_to_pure_memory[unit]] if unit in db.unit_to_pure_memory else 0 for unit in db.unit_kana_ids[kana])
             if own < target[kana]:
                 need_list.append(((0, kana), target[kana] - own))
