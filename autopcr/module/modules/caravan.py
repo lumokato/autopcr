@@ -732,7 +732,7 @@ class CaravanGame:
         return self.state == eState.STOP
 
 @name('大富翁')
-@default(True)
+@default(False)
 @description("将运行直至骰子耗尽，料理能用则用。可搬空商店停止指商店币可购买所有限定商品后停止")
 @booltype('caravan_play_until_shop_empty', '可搬空商店停止', True)
 class caravan_play(Module):
