@@ -85,7 +85,7 @@ class underground_skip(Module):
         async def do_enter(now_id = None):
             id = get_cleared_max_dungeon_id() if not now_id else now_id
             if id > 0:
-                if not client.is_deck_empty(ePartyType.DUNGEON):
+                if not await client.is_deck_empty(ePartyType.DUNGEON):
                     await client.deck_update(ePartyType.DUNGEON, [0, 0, 0, 0, 0])
                 await client.enter_dungeon(id)
                 self._log(f"已进入【{dungeon_name(id)}】")
@@ -225,7 +225,7 @@ class special_underground_skip(Module):
                 raise AbortError(f"【{dungeon_name(id)}】未讨伐，无法进入特别地下城")
 
             await special_dungeon_info(refresh=True)
-            if not client.is_deck_empty(ePartyType.DUNGEON):
+            if not await client.is_deck_empty(ePartyType.DUNGEON):
                 await client.deck_update(ePartyType.DUNGEON, [0, 0, 0, 0, 0])
 
             req = await client.enter_special_dungeon(id)
@@ -311,6 +311,14 @@ class starcup_sweep(investigate_sweep):
             return self.get_config(f'starcup{self.quest_id() % 10}_sweep_times')
         else:
             return self.get_config(f'starcup{self.quest_id() % 10}_sweep_campaign_times')
+
+@singlechoice("heart7_sweep_campaign_times", "庆典次数", 5, [0, 5, 10, 15, 20])
+@singlechoice("heart7_sweep_times", "非庆典次数", 5, [0, 5, 10, 15, 20])
+@name('刷取心碎7')
+@default(False)
+class xinsui7_sweep(xinsui_sweep):
+    def quest_id(self) -> int:
+        return 18001007
 
 @singlechoice("heart6_sweep_campaign_times", "庆典次数", 5, [0, 5, 10, 15, 20])
 @singlechoice("heart6_sweep_times", "非庆典次数", 5, [0, 5, 10, 15, 20])

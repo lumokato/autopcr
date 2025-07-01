@@ -61,6 +61,7 @@ class datamgr(BaseModel, Component[apiclient]):
     return_fes_info_list: List[ReturnFesInfo] = None
     data_time: int = 0
     version: int = 0
+    caravan_dishes: typing.Counter[int] = Counter()
 
     @staticmethod
     async def try_update_database(ver: int):
@@ -122,6 +123,7 @@ class datamgr(BaseModel, Component[apiclient]):
         if not times:
             return 0
         times = max(times)
+        # return int(times)
         return int(times) // 2 # TODO delete // 2 when stop speed up
 
     def get_heart_piece_campaign_times(self) -> int:
@@ -416,8 +418,10 @@ class datamgr(BaseModel, Component[apiclient]):
                 self.unit_love_data[unit_id].chara_id = unit_id
                 self.unit_love_data[unit_id].chara_love = 0
                 self.unit_love_data[unit_id].love_level = 0
-        elif item.type == eInventoryType.ExtraEquip:
+        elif item.type == eInventoryType.ExtraEquip and item.ex_equip:
             self.ex_equips[item.ex_equip.serial_id] = item.ex_equip
+        elif item.type == eInventoryType.CaravanDish:
+            self.caravan_dishes[item.id] = item.stock
         else:
             self.inventory[token] = item.stock
 
@@ -439,7 +443,12 @@ class datamgr(BaseModel, Component[apiclient]):
         return [item for item in self.inventory if filter(item) and self.inventory[item] > 0]
 
     def get_inventory(self, item: ItemType) -> int:
-        return self.inventory.get(item, 0)
+        if item == db.mana:
+            return self.gold.gold_id_free + self.gold.gold_id_pay
+        elif item == db.jewel:
+            return self.jewel.free_jewel + self.jewel.jewel
+        else:
+            return self.inventory.get(item, 0)
 
     def set_inventory(self, item: ItemType, value: int):
         self.inventory[item] = value
@@ -463,6 +472,12 @@ class datamgr(BaseModel, Component[apiclient]):
             return self.get_inventory((eInventoryType.Item, 90007))
         elif shop_id == eSystemId.COUNTER_STOP_SHOP: # 大师店
             return self.get_inventory((eInventoryType.Item, 90008))
+        elif shop_id == eSystemId.EX_EQUIPMENT_WEAPON_SHOP: # EX武器店
+            return self.get_inventory((eInventoryType.Item, 90009))
+        elif shop_id == eSystemId.EX_EQUIPMENT_ARMOR_SHOP: # EX防具店
+            return self.get_inventory((eInventoryType.Item, 90010))
+        elif shop_id == eSystemId.EX_EQUIPMENT_ACCESSORY_SHOP: # EX饰品店
+            return self.get_inventory((eInventoryType.Item, 90011))
         else:
             raise ValueError(f"未知的商店{shop_id}")
 

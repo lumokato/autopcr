@@ -448,6 +448,18 @@ class UnitController(Module):
         if self.unit.promotion_level < target_promote_rank:
             await self.unit_promotion_up_aware(target_promote_rank, growth_limit)
 
+        if self.unit.union_burst and self.unit.union_burst[0].skill_level < target_skill_ub_level:
+            await self.unit_skill_up_aware(eSkillLocationCategory.UNION_BURST_SKILL, lambda: self.unit.union_burst[0], target_skill_ub_level, growth_limit)
+
+        if self.unit.main_skill and self.unit.main_skill[0].skill_level < target_skill_s1_level:
+            await self.unit_skill_up_aware(eSkillLocationCategory.MAIN_SKILL_1, lambda: self.unit.main_skill[0], target_skill_s1_level, growth_limit)
+
+        if len(self.unit.main_skill) > 1 and self.unit.main_skill[1].skill_level < target_skill_s2_level:
+            await self.unit_skill_up_aware(eSkillLocationCategory.MAIN_SKILL_2, lambda: self.unit.main_skill[1], target_skill_s2_level, growth_limit)
+
+        if self.unit.ex_skill and self.unit.ex_skill[0].skill_level < target_skill_ex_level:
+            await self.unit_skill_up_aware(eSkillLocationCategory.EX_SKILL_1, lambda: self.unit.ex_skill[0], target_skill_ex_level, growth_limit)
+
         for i in range(6):
             equip = self.unit.equip_slot[i]
             if equip.id == 999999:
@@ -469,18 +481,6 @@ class UnitController(Module):
                         self.unit.promotion_level < growth_limit.promotion_level or \
                         self.unit.promotion_level == growth_limit.promotion_level and getattr(growth_limit, f"equipment_{i}") > star))
 
-        if self.unit.union_burst and self.unit.union_burst[0].skill_level < target_skill_ub_level:
-            await self.unit_skill_up_aware(eSkillLocationCategory.UNION_BURST_SKILL, lambda: self.unit.union_burst[0], target_skill_ub_level, growth_limit)
-
-        if self.unit.main_skill and self.unit.main_skill[0].skill_level < target_skill_s1_level:
-            await self.unit_skill_up_aware(eSkillLocationCategory.MAIN_SKILL_1, lambda: self.unit.main_skill[0], target_skill_s1_level, growth_limit)
-
-        if len(self.unit.main_skill) > 1 and self.unit.main_skill[1].skill_level < target_skill_s2_level:
-            await self.unit_skill_up_aware(eSkillLocationCategory.MAIN_SKILL_2, lambda: self.unit.main_skill[1], target_skill_s2_level, growth_limit)
-
-        if self.unit.ex_skill and self.unit.ex_skill[0].skill_level < target_skill_ex_level:
-            await self.unit_skill_up_aware(eSkillLocationCategory.EX_SKILL_1, lambda: self.unit.ex_skill[0], target_skill_ex_level, growth_limit)
-
         growth_limit_unique = await self.is_unique_growth_unit()
         if self.unit.unique_equip_slot and self.unit.unique_equip_slot[0].enhancement_level < target_unique1_level:
             await self.unit_unique_equip_enhance_aware(target_unique1_level, growth_limit_unique)
@@ -496,7 +496,7 @@ class unit_equip_enhance_up(UnitController):
             raise SkipError("今日已完成装备强化任务")
 
         self.client = client
-        unit_id, unit_name = self.get_config('equip_enhance_up_unit').split(':')
+        unit_id = self.get_config('equip_enhance_up_unit')
         self.unit_id = int(unit_id)
 
         growth_limit = await self.is_growth_unit()
@@ -533,7 +533,7 @@ class unit_skill_level_up(UnitController):
             raise SkipError("今日已完成技能升级任务")
 
         self.client = client
-        unit_id, unit_name = self.get_config('level_up_unit').split(':')
+        unit_id = self.get_config('level_up_unit')
         self.unit_id = int(unit_id)
 
         growth_limit = await self.is_growth_unit()
@@ -587,40 +587,45 @@ class unit_set_unique_equip_growth(UnitController):
 @singlechoice("unit_promote_skill_ub", "ub等级", 1, db.unit_level_candidate)
 @singlechoice("unit_promote_rank", "品级", 1, db.unit_rank_candidate)
 @singlechoice("unit_promote_level", "等级", 1, db.unit_level_candidate)
-@unitchoice("unit_promote_unit", "拉取角色")
+@unitlist("unit_promote_units", "拉取角色")
 @default(False)
 class unit_promote(UnitController):
 
     async def do_task(self, client: pcrclient):
         self.client = client
-        unit_id, unit_name = self.get_config('unit_promote_unit').split(':')
-        self.unit_id = int(unit_id)
+        unit_list = self.get_config('unit_promote_units')
+        for unit_id in unit_list:
+            try:
+                self.unit_id = int(unit_id)
 
-        self.auto_level_up = bool(self.get_config('unit_promote_level_when_fail_to_equip_or_skill'))
-        self.auto_rank_up = bool(self.get_config('unit_promote_rank_when_fail_to_unique_equip'))
-        self.use_raw_ore = bool(self.get_config('unit_promote_rank_use_raw_ore'))
+                self.auto_level_up = bool(self.get_config('unit_promote_level_when_fail_to_equip_or_skill'))
+                self.auto_rank_up = bool(self.get_config('unit_promote_rank_when_fail_to_unique_equip'))
+                self.use_raw_ore = bool(self.get_config('unit_promote_rank_use_raw_ore'))
 
-        target_level = int(self.get_config('unit_promote_level'))
-        target_promotion_rank = int(self.get_config('unit_promote_rank'))
-        target_equip_star = [int(self.get_config(f'unit_promote_equip_{i}')) for i in range(6)]
-        target_skill_ub_level = int(self.get_config('unit_promote_skill_ub'))
-        target_skill_s1_level = int(self.get_config('unit_promote_skill_s1'))
-        target_skill_s2_level = int(self.get_config('unit_promote_skill_s2'))
-        target_skill_ex_level = int(self.get_config('unit_promote_skill_ex'))
-        target_unique1_level = int(self.get_config('unit_promote_unique_equip1_level'))
+                target_level = int(self.get_config('unit_promote_level'))
+                target_promotion_rank = int(self.get_config('unit_promote_rank'))
+                target_equip_star = [int(self.get_config(f'unit_promote_equip_{i}')) for i in range(6)]
+                target_skill_ub_level = int(self.get_config('unit_promote_skill_ub'))
+                target_skill_s1_level = int(self.get_config('unit_promote_skill_s1'))
+                target_skill_s2_level = int(self.get_config('unit_promote_skill_s2'))
+                target_skill_ex_level = int(self.get_config('unit_promote_skill_ex'))
+                target_unique1_level = int(self.get_config('unit_promote_unique_equip1_level'))
 
-        await self.promote(target_level = target_level, 
-                           target_promote_rank = target_promotion_rank, 
-                           target_equip_star = target_equip_star, 
-                           target_skill_ub_level = target_skill_ub_level, 
-                           target_skill_s1_level = target_skill_s1_level, 
-                           target_skill_s2_level = target_skill_s2_level, 
-                           target_skill_ex_level = target_skill_ex_level, 
-                           target_unique1_level = target_unique1_level)
+                await self.promote(target_level = target_level, 
+                                   target_promote_rank = target_promotion_rank, 
+                                   target_equip_star = target_equip_star, 
+                                   target_skill_ub_level = target_skill_ub_level, 
+                                   target_skill_s1_level = target_skill_s1_level, 
+                                   target_skill_s2_level = target_skill_s2_level, 
+                                   target_skill_ex_level = target_skill_ex_level, 
+                                   target_unique1_level = target_unique1_level)
+            except Exception as e:
+                self._warn(str(e))
+                continue
 
-@description('''角色ID	角色名字	角色等级	角色星级	角色好感度	角色Rank	装备等级(左上)	装备等级(右上)	装备等级(左中)	装备等级(右中)	装备等级(左下)	装备等级(右下)	UB技能等级	技能1等级	技能2等级	EX技能等级	专武等级	EX武器	EX武器等级	EX防具	EX防具等级	EX首饰	EX首饰等级	高级设置
+@description('''角色ID	角色名字	角色等级	角色星级	好感度	Rank	左上	右上	左中	右中	左下	右下	UB	技能1	技能2	EX技能	专武1	专武2	EX武器	EX武器等级	EX防具	EX防具等级	EX首饰	EX首饰等级	高级设置
 不会使用专武球，专武升级请认真考虑！
-不考虑星级、好感度、EX武器、高级设置''')
+不考虑星级、好感度、专武2、EX装备、高级设置''')
 @name('批量拉角色练度')
 @texttype("unit_promote_text", "目标练度", "")
 @booltype("unit_promote_batch_use_raw_ore", "使用原矿", False)
@@ -637,7 +642,7 @@ class unit_promote_batch(UnitController):
             try:
                 unit_id, unit_name, target_level, target_star, target_dear, target_rank, \
                     equip_0, equip_1, equip_2, equip_3, equip_4, equip_5, \
-                    ub, s1, s2, ex, unique1_level, \
+                    ub, s1, s2, ex, unique1_level, unique2_level, \
                     ex1_id, ex1_star, ex2_id, ex2_star, ex3_id, ex3_star, \
                     dear_info = unit_text.split()
 
@@ -703,9 +708,9 @@ class unit_memory_buy(UnitController):
 
 @name('批量购买记忆碎片')
 @booltype("unit_memory_batch_do_buy", "开买", False)
-@description('''角色ID	角色名字	角色等级	角色星级	角色好感度	角色Rank	装备等级(左上)	装备等级(右上)	装备等级(左中)	装备等级(右中)	装备等级(左下)	装备等级(右下)	UB技能等级	技能1等级	技能2等级	EX技能等级	专武等级	EX武器	EX武器等级	EX防具	EX防具等级	EX首饰	EX首饰等级	高级设置
+@description('''角色ID	角色名字	角色等级	角色星级	好感度	Rank	左上	右上	左中	右中	左下	右下	UB	技能1	技能2	EX技能	专武1	专武2	EX武器	EX武器等级	EX防具	EX防具等级	EX首饰	EX首饰等级	高级设置
 购买目标练度所缺的记忆碎片，先考虑大师店，再考虑女神店，其余商店请用对应的商店模块购买！
-仅考虑星级、专武，不考虑界限突破''')
+仅考虑星级、专武1，不考虑界限突破''')
 @default(False)
 @texttype("unit_memory_buy_batch_text", "目标练度", "")
 class unit_memory_buy_batch(UnitController):
@@ -720,7 +725,7 @@ class unit_memory_buy_batch(UnitController):
             try:
                 unit_id, unit_name, target_level, target_star, target_dear, target_rank, \
                     equip_0, equip_1, equip_2, equip_3, equip_4, equip_5, \
-                    ub, s1, s2, ex, unique1_level, \
+                    ub, s1, s2, ex, unique1_level, unique2_level, \
                     ex1_id, ex1_star, ex2_id, ex2_star, ex3_id, ex3_star, \
                     dear_info = unit_text.split()
 

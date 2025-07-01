@@ -112,7 +112,7 @@ ManaTravelEventRemain = set({eEventReward.Coin, eEventReward.EquipStone, eEventR
 蓝色事件保留指不收取金币、蛋糕、强化石、经验药水、Mana事件，以期提高出现其他事件的概率，当保留事件超过阈值时会自动收取一个。
 '''.strip())
 @inttype('travel_top_blue_event_remain_cnt', '蓝色事件保留', 1, [0, 1, 2])
-@multichoice("travel_speed_up_target", "加速地图", ['1-1', '1-4'], db.travel_quest_candidate)
+@TravelQuestConfig("travel_speed_up_target", "加速地图", [11002001, 11002004])
 @singlechoice('travel_quest_gold_event_strategy', "代币事件策略", '赌狗', ['保守','赌狗','随机'])
 @singlechoice('travel_quest_equip_event_strategy', "装备事件策略", '赌狗', ['保守','赌狗','随机'])
 @inttype('travel_quest_speed_up_paper_hold', "加速券保留", 12, list(range(3001)))
@@ -151,7 +151,7 @@ class travel_quest_sweep(Module):
         travel_quest_gold_event_strategy: str = self.get_config("travel_quest_gold_event_strategy")
         travel_quest_speed_up_paper_hold: int = self.get_config("travel_quest_speed_up_paper_hold")
         travel_top_blue_event_remain_cnt: int = self.get_config("travel_top_blue_event_remain_cnt")
-        travel_speed_up_target: Set[int] = {db.get_travel_quest_id_from_candidate(id) for id in self.get_config("travel_speed_up_target")}
+        travel_speed_up_target: Set[int] = set(self.get_config("travel_speed_up_target"))
         reward: List[InventoryInfo] = []
 
         def get_strategy(event_id: int) -> str:
@@ -170,6 +170,27 @@ class travel_quest_sweep(Module):
 
         if team_count < 3:
             self._warn(f"正在探险的小队数为{team_count}<3，请上号开始新的探险！")
+
+        if top.round_event_data:
+            self._log("发现宝箱殿")
+            round_event_data = top.round_event_data
+            result = None
+            round_id = round_event_data.round
+            while round_event_data is not None:
+                round_id = round_event_data.round
+                select_door_id = 1
+                if round_event_data.right_door_effect_id != 900000:
+                    select_door_id = 2
+                resp = await client.travel_result_round_event(round_event_data.round, select_door_id)
+                reward.extend(resp.current_round_result.reward_list or [])
+                round_event_data = resp.next_round_event_data
+                result = resp.current_round_result.result
+
+            if result == eRoundEventResultType.SUCCESS:
+                self._log(f"通关宝箱殿，获得了{round_id}层宝箱")
+            else:
+                suffix = "但获得了该层宝箱" if result == eRoundEventResultType.SUCCESS else "且未获得该层宝箱"
+                self._log(f"止步于第{round_id}层，{suffix}")
 
         if top.top_event_list:
             blue_events = sorted([
@@ -193,7 +214,7 @@ class travel_quest_sweep(Module):
                     self._warn(f"处理特殊事件{top_event.top_event_id}失败:{e}")
             if remain_blue_event_cnt:
                 self._log(f"保留{remain_blue_event_cnt}个蓝色事件")
-            self._log(f"阅读{len(top.top_event_list)}个特殊事件")
+            self._log(f"阅读{len(top.top_event_list) - remain_blue_event_cnt}个特殊事件")
 
         check_next = True
         result_count = {}
@@ -289,9 +310,9 @@ class travel_quest_sweep(Module):
 
 @inttype("travel_speed_up_paper_threshold", "加速阈值", 12, list(range(13)))
 @inttype("travel_target_day", "轮转天数", 7, list(range(1, 31)))
-@multichoice("travel_target_quest3", "轮转队伍3", ['1-2','1-3','1-5'], db.travel_quest_candidate)
-@multichoice("travel_target_quest2", "轮转队伍2", ['1-4'], db.travel_quest_candidate)
-@multichoice("travel_target_quest1", "轮转队伍1", ['1-1'], db.travel_quest_candidate)
+@TravelQuestConfig("travel_target_quest3", "轮转目标3", [11002002, 11002003, 11002005])
+@TravelQuestConfig("travel_target_quest2", "轮转目标2", [11002004])
+@TravelQuestConfig("travel_target_quest1", "轮转目标1", [11002001])
 @name('探险轮转')
 @description('''
 自动根据轮转进行探险，按轮转时间进行目标切换，需保持三支队探险。
@@ -312,7 +333,7 @@ class travel_round(Module):
             raise AbortError("三个轮转目标有重叠！请修改！")
 
         n = db.get_today_start_time().timetuple().tm_yday // int(self.get_config("travel_target_day"))
-        def get_quest_id(lst: List, n): return db.get_travel_quest_id_from_candidate(lst[n % len(lst)])
+        def get_quest_id(lst: List, n): return lst[n % len(lst)]
         return [
             get_quest_id(target_quest1, n),
             get_quest_id(target_quest2, n),
@@ -406,16 +427,14 @@ class travel_round(Module):
 @name('计算探险编队')
 @default(True)
 @booltype('travel_team_view_go', '探险出发', False)
-@multichoice('travel_team_view_quest_id', '探险任务', [], db.travel_quest_candidate)
+@TravelQuestConfig('travel_team_view_quest_id', '探险任务', [])
 @booltype('travel_team_view_auto_memory', '自动设置记忆碎片', True)
 @description('根据设定的记忆碎片优先级，从剩余可派遣角色中自动计算战力平衡编队，自动设置记忆碎片指记忆碎片优先度不足够派出队伍时，根据盈亏情况补充，探险出发指以计算出的编队出发')
 class travel_team_view(Module):
     async def do_task(self, client: pcrclient):
         travel_team_auto_memory = self.get_config('travel_team_view_auto_memory')
         travel_team_go = self.get_config('travel_team_view_go')
-        travel_quest_id_raw: List[str] = self.get_config('travel_team_view_quest_id')
-        travel_quest_id: List[int] = [db.get_travel_quest_id_from_candidate(x) for x in travel_quest_id_raw]
-
+        travel_quest_id: List[int] = self.get_config('travel_team_view_quest_id')
         top = await client.travel_top(max(db.get_open_travel_area()), 1)
         unit_list = top.priority_unit_list
 

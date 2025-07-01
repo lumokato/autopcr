@@ -14,7 +14,6 @@ from ...model.error import *
 from ...db.database import db
 from ...model.enums import *
 from ...util.arena import instance as ArenaQuery
-import datetime
 import random
 import itertools
 from collections import Counter
@@ -208,14 +207,24 @@ class ex_equip_info(Module):
                 if not cb_only or db.ex_equipment_data[ex.ex_equipment_id].clan_battle_equip_flag).items()),
                 key=lambda x: (db.ex_equipment_data[x[0][0]].rarity, db.ex_equipment_data[x[0][0]].clan_battle_equip_flag, x[0][0], x[0][1]), reverse=True
                 )
-        rarity = sorted(list(db.ex_rarity_name.keys()), reverse=True)
-        rarity_count = {i: 0 for i in rarity}
-        for (id, rank), c in cnt:
-            rarity_count[db.ex_equipment_data[id].rarity] += c*(rank+1) 
-
-        msg0 = 'ex装备总计: '+', '.join(f"{db.ex_rarity_name[r]}: {rarity_count[r]}" for r in rarity) + '\n'
-        msg = msg0 + '\n'.join(f"{db.get_ex_equip_name(id, rank)}x{c}" for (id, rank), c in cnt)
+        pink_cnt = sum(1 * c for (id, rank), c in cnt if db.ex_equipment_data[id].rarity == 4)
+        history_pink_cnt = sum((rank + 1) * c for (id, rank), c in cnt if db.ex_equipment_data[id].rarity == 4)
+        self._log(f"粉装数量：{pink_cnt}/{history_pink_cnt}")
+        msg = '\n'.join(f"{db.get_ex_equip_name(id, rank)}x{c}" for (id, rank), c in cnt)
         self._log(msg)
+
+@description('看看你缺了什么称号')
+@name('查缺称号')
+@default(True)
+class missing_emblem(Module):
+    async def do_task(self, client: pcrclient):
+        emblem_top = await client.emblem_top()
+        missing_emblem = set(db.emblem_data.keys()) - set(emblem.emblem_id for emblem in emblem_top.user_emblem_list)
+        if not missing_emblem:
+            self._log("全称号玩家！你竟然没有缺少的称号！")
+        else:
+            self._log(f"缺少{len(missing_emblem)}个称号")
+            self._log('\n'.join(f"{db.emblem_data[id].emblem_name}-{db.emblem_mission_data[db.emblem_data[id].description_mission_id].description if db.emblem_data[id].description_mission_id in db.emblem_mission_data else ''}" for id in missing_emblem))
 
 @description('看看你缺了什么角色')
 @name('查缺角色')
@@ -334,8 +343,6 @@ class gacha_exchange_chara(Module):
         exchange_id = target_gacha.exchange_id if not real_exchange_id else real_exchange_id
 
         exchange_unit_ids = [d.unit_id for d in db.gacha_exchange_chara[exchange_id]]
-        print(exchange_unit_ids)
-        print(gacha_exchange_unit_id)
         if gacha_exchange_unit_id not in exchange_unit_ids:
             raise AbortError(f"天井池里未找到{db.get_unit_name(gacha_exchange_unit_id)}")
 
@@ -347,7 +354,7 @@ class gacha_exchange_chara(Module):
 
         resp = await client.gacha_exchange_point(exchange_id, gacha_exchange_unit_id, gacha_point.current_point)
         msg = await client.serialize_reward_summary(resp.reward_info_list)
-        self._log(f"兑换了{db.get_unit_name(gacha_exchange_unit_id)}\n{msg}")
+        self._log(f"兑换了{db.get_unit_name(gacha_exchange_unit_id)}，获得了:\n{msg}")
 
 
 @description('查看会战支援角色的详细数据，拒绝内鬼！')
@@ -441,7 +448,7 @@ class Arena(Module):
             target_info = (await client.get_profile(target.viewer_id)).user_info
             target_rank = self.get_rank_from_user_info(target_info)
 
-            self._log(f"{target.user_name}({target.viewer_id})\n{datetime.datetime.fromtimestamp(history.versus_time)} {'刺' if history_detail.is_challenge else '被刺'}")
+            self._log(f"{target.user_name}({target.viewer_id})\n{datetime.fromtimestamp(history.versus_time)} {'刺' if history_detail.is_challenge else '被刺'}")
             self._log(f"{self_rank} -> {target_rank}({target_info.user_name})")
 
             if history_detail.is_challenge:
@@ -770,7 +777,6 @@ class pjjc_def_shuffle_team(PJJCShuffleTeam):
 @name('兰德索尔图书馆导入数据')
 @default(True)
 @notlogin(check_data = True)
-@text_result
 class get_library_import_data(Module):
     async def do_task(self, client: pcrclient):
         msg = client.data.get_library_import_data()
@@ -814,12 +820,36 @@ class get_need_pure_memory(Module):
         need_list = []
         for unit in unique_equip_2_pure_memory_id:
             kana = db.unit_data[unit].kana
-            target[kana] += 150
+            target[kana] += 150 if unit not in client.data.unit or len(client.data.unit[unit].unique_equip_slot) < 2 or not client.data.unit[unit].unique_equip_slot[1].is_slot else 0
             own = -sum(pure_gap[db.unit_to_pure_memory[unit]] if unit in db.unit_to_pure_memory else 0 for unit in db.unit_kana_ids[kana])
             need_list.append(((eInventoryType.Unit, unit), target[kana] - own))
         msg = {}
         msg = '\n'.join([f'{db.get_inventory_name_san(item[0])}: {"缺少" if item[1] > 0 else "盈余"}{abs(item[1])}片' for item in need_list])
         self._log(msg)
+
+@description('去除六星需求后，专二所需纯净碎片减去库存的结果')
+@name('获取纯净碎片缺口(表格版)')
+@notlogin(check_data = True)
+@default(True)
+class get_need_pure_memory_box(Module):
+    async def do_task(self, client: pcrclient):
+        from .autosweep import unique_equip_2_pure_memory_id
+        pure_gap = client.data.get_pure_memory_demand_gap()
+        target = Counter()
+        need_list = []
+        header = []
+        data = {}
+        for unit in unique_equip_2_pure_memory_id:
+            kana = db.unit_data[unit].kana
+            target[kana] += 150
+            own = -sum(pure_gap[db.unit_to_pure_memory[unit]] if unit in db.unit_to_pure_memory else 0 for unit in db.unit_kana_ids[kana])
+            need_list.append((unit, target[kana] - own))
+            unit_name = db.get_unit_name(unit)
+            header.append(unit_name)
+            data[unit_name] = target[kana] - own
+
+        self._table_header(header)
+        self._table(data)
 
 @description('根据每个角色开专、升级至当前最高专所需的心碎减去库存的结果，大心转换成10心碎')
 @name('获取心碎缺口')
@@ -971,3 +1001,4 @@ class set_my_party(Module):
             else:
                 await client.set_my_party(tab_number, party_number, 4, title, unit_list, change_rarity_list)
                 self._log(f"设置了{title}")
+

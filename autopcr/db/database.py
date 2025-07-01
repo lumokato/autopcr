@@ -13,6 +13,7 @@ from queue import SimpleQueue
 from .constdata import extra_drops
 from ..core.apiclient import apiclient
 from typing import TypeVar, Generic
+from ..util.pcr_data import CHARA_NICKNAME
 
 T = TypeVar("T")
 
@@ -51,6 +52,7 @@ class database():
     jewel: ItemType = (eInventoryType.Jewel, 91002)
     travel_speed_up_paper: ItemType = (eInventoryType.Item, 23002)
     gacha_single_ticket: ItemType = (eInventoryType.Item, 24001)
+    dice: ItemType = (eInventoryType.Item, 99009)
 
     def update(self, dbmgr):
         self.dbmgr = dbmgr
@@ -62,6 +64,72 @@ class database():
                 RedeemUnit.query(db)
                 .group_by(lambda x: x.unit_id)
                 .to_dict(lambda x: x.key, lambda x: x.to_dict(lambda x: x.slot_id, lambda x: x))
+            )
+
+    @lazy_property
+    def caravan_dish(self) -> Dict[int, CaravanDish]:
+        with self.dbmgr.session() as db:
+            return (
+                CaravanDish.query(db)
+                .to_dict(lambda x: x.dish_id, lambda x: x)
+            )
+
+    @lazy_property
+    def caravan_event_effect(self) -> Dict[int, CaravanEventEffect]:
+        with self.dbmgr.session() as db:
+            return (
+                CaravanEventEffect.query(db)
+                .to_dict(lambda x: x.event_id, lambda x: x)
+            )
+
+    @lazy_property
+    def caravan_map(self) -> Dict[int, CaravanMap]:
+        with self.dbmgr.session() as db:
+            return (
+                CaravanMap.query(db)
+                .to_dict(lambda x: x.block_id, lambda x: x)
+            )
+
+    @lazy_property
+    def caravan_coin_shop_lineup(self) -> Dict[int, List[CaravanCoinShopLineup]]:
+        with self.dbmgr.session() as db:
+            return (
+                CaravanCoinShopLineup.query(db)
+                .group_by(lambda x: x.season_id)
+                .to_dict(lambda x: x.key, lambda x: x.to_list())
+            )
+
+    @lazy_property
+    def caravan_schedule(self) -> Dict[int, CaravanSchedule]:
+        with self.dbmgr.session() as db:
+            return (
+                CaravanSchedule.query(db)
+                .to_dict(lambda x: x.season_id, lambda x: x)
+            )
+
+    @lazy_property
+    def caravan_gacha_block_lineup(self) -> Dict[int, CaravanGachaBlockLineup]:
+        with self.dbmgr.session() as db:
+            return (
+                CaravanGachaBlockLineup.query(db)
+                .to_dict(lambda x: x.group_id, lambda x: x)
+            )
+
+    @lazy_property
+    def ccc_scenario(self) -> Dict[int, List[CccScenario]]:
+        with self.dbmgr.session() as db:
+            return (
+                CccScenario.query(db)
+                .group_by(lambda x: x.ccc_scenario_id)
+                .to_dict(lambda x: x.key, lambda x: x.to_list())
+            )
+
+    @lazy_property
+    def ccc_object(self) -> Dict[int, CccObject]:
+        with self.dbmgr.session() as db:
+            return (
+                CccObject.query(db)
+                .to_dict(lambda x: x.ccc_object_id, lambda x: x)
             )
 
     @lazy_property
@@ -601,7 +669,7 @@ class database():
         with self.dbmgr.session() as db:
             return (
                 StoryDetail.query(db)
-                .where(lambda x: x.story_id >= 4010000 and x.story_id < 4020000)
+                .where(lambda x: x.story_group_id == 4010)
                 .to_list()
             )
 
@@ -793,6 +861,14 @@ class database():
                     ExEquipmentDatum.query(db)
                     .select(lambda x: (eInventoryType.ExtraEquip, x.ex_equipment_id, x.name))
                 )
+                .concat(
+                    CaravanDish.query(db)
+                    .select(lambda x: (eInventoryType.CaravanDish, x.dish_id, x.name))
+                )
+                .concat(
+                    CaravanTreasure.query(db)
+                    .select(lambda x: (eInventoryType.CaravanTreasure, x.id, x.name))
+                )
                 .to_dict(lambda x: (x[0], x[1]), lambda x: x[2])
             )
 
@@ -845,6 +921,14 @@ class database():
             return (
                 StationaryMissionDatum.query(db)
                 .to_dict(lambda x: x.stationary_mission_id, lambda x: x)
+            )
+
+    @lazy_property
+    def emblem_data(self) -> Dict[int, EmblemDatum]:
+        with self.dbmgr.session() as db:
+            return (
+                EmblemDatum.query(db)
+                .to_dict(lambda x: x.emblem_id, lambda x: x)
             )
 
     @lazy_property
@@ -1277,6 +1361,17 @@ class database():
             )
 
     @lazy_property
+    def travel_round_event_data(self) -> Dict[int, Dict[int, TravelRoundEventDatum]]:
+        with self.dbmgr.session() as db:
+            return (
+                TravelRoundEventDatum.query(db)
+                .group_by(lambda x: x.round_event_id)
+                .to_dict(lambda x: x.key, lambda x: x.to_dict(
+                    lambda x: x.round, lambda x: x
+                ))
+            )
+
+    @lazy_property
     def travel_quest_data(self) -> Dict[int, TravelQuestDatum]:
         with self.dbmgr.session() as db:
             return (
@@ -1349,7 +1444,7 @@ class database():
         try:
             return self.inventory_name[(item[0], item[1])]
         except:
-            return f"未知物品({item[1]})"
+            return f"未知物品({item[0]}, {item[1]})"
 
     def get_ex_equip_name(self, item: int, rank: int = 0) -> str:
         try:
@@ -1359,6 +1454,8 @@ class database():
 
     def get_unit_name(self, unit_id: int) -> str:
         try:
+            if unit_id // 100 in CHARA_NICKNAME:
+                return CHARA_NICKNAME[unit_id // 100]
             return self.inventory_name[(eInventoryType.Unit, unit_id)]
         except:
             return f"未知角色({unit_id})"
@@ -1531,6 +1628,10 @@ class database():
                 .where(lambda x: now >= self.parse_time(x.start_time) and now <= self.parse_time(x.end_time)) \
                 .to_list()
 
+    def get_active_hatsune_id(self) -> List[int]:
+        active_hatsune = self.get_active_hatsune()
+        return [event.event_id for event in active_hatsune]
+
     def get_active_hatsune_name(self) -> List[str]:
         active_hatsune = self.get_active_hatsune()
         return [f"{event.event_id}:{db.event_name[event.event_id]}" for event in active_hatsune]
@@ -1588,11 +1689,13 @@ class database():
         half_day = datetime.timedelta(hours = 7)
         n3 = (flow(self.campaign_schedule.values())
                 .where(lambda x: self.is_normal_quest_campaign(x.id) and x.value >= 6000 and self.is_level_effective_scope_in_campaign(level, x.id)) # TODO change 3000 when stop speed up
+                # .where(lambda x: self.is_normal_quest_campaign(x.id) and x.value >= 3000 and self.is_level_effective_scope_in_campaign(level, x.id))
                 .select(lambda x: (db.parse_time(x.start_time), db.parse_time(x.end_time)))
                 .to_list()
               )
         h3 = (flow(self.campaign_schedule.values())
                 .where(lambda x: self.is_hard_quest_campaign(x.id) and x.value >= 6000) # TODO change 3000 when stop speed up
+                # .where(lambda x: self.is_hard_quest_campaign(x.id) and x.value >= 3000)
                 .select(lambda x: (db.parse_time(x.start_time), db.parse_time(x.end_time)))
                 .to_list()
              )
@@ -1996,8 +2099,11 @@ class database():
             int(max(0, power - quest.need_power) * coeff)
         )
 
-    def unlock_unit_condition_candidate(self):
+    def unlock_unit_condition_candidate(self) -> List[int]:
         return self.unlock_unit_condition
+
+    def limit_unit_condition_candidate(self) -> List[int]:
+        return [x for x in self.unlock_unit_condition if self.unit_data[x].is_limited]
 
     def free_gacha_ids_candidate(self):
         free_gacha_campaigns = flow(self.campaign_free_gacha.values()) \

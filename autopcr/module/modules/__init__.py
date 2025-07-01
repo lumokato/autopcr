@@ -3,6 +3,7 @@ from typing import Any
 from .autosweep import *
 from .box import *
 from .nologin import *
+from .caravan import *
 from .clan import *
 from .cron import *
 from .daily import *
@@ -23,6 +24,11 @@ class ModuleList:
     name: str = ""
     key: str = ""
     modules: List[Any] = field(default_factory=list)
+    hidden_in_batch: bool = False
+    hidden_in_clan: bool = False
+    hidden: bool = False
+    visible_in_clan: bool = False
+    visible_in_batch: bool = False
 
 cron_modules = ModuleList(
     '定时',
@@ -34,7 +40,9 @@ cron_modules = ModuleList(
         cron4,
         cron5,
         cron6,
-    ]
+    ],
+    hidden_in_batch=True,
+    hidden_in_clan=True,
 )
 
 daily_modules = ModuleList(
@@ -60,6 +68,7 @@ daily_modules = ModuleList(
         special_underground_skip,
         tower_cloister_sweep,
         jjc_reward,
+        xinsui7_sweep,
         xinsui6_sweep,
         xinsui5_sweep,
         xinsui4_sweep,
@@ -73,11 +82,12 @@ daily_modules = ModuleList(
         present_receive,
         smart_sweep,
         smart_hard_sweep,
-        smart_shiori_sweep,
         smart_normal_sweep,
 
         smart_very_hard_sweep,
         mirai_very_hard_sweep,
+        
+        smart_shiori_sweep,
 
         last_hard_quest_sweep,
         last_quest_sweep,
@@ -132,7 +142,18 @@ planning_modules = ModuleList(
         get_need_memory,
         get_need_pure_memory,
         get_need_xinsui,
-    ]
+    ],
+    hidden_in_batch=True,
+)
+
+table_modules = ModuleList(
+    '表格',
+    'table',
+    [
+        get_need_pure_memory_box,
+    ],
+    hidden=True,
+    visible_in_batch=True,
 )
 
 
@@ -140,7 +161,10 @@ unit_modules = ModuleList(
     '角色',
     'unit',
     [
+        search_unit,
+        master_shop,
         missing_unit,
+        refresh_box,
         unit_promote,
         unit_memory_buy,
         unit_set_unique_equip_growth,
@@ -154,7 +178,10 @@ clan_modules = ModuleList(
         unit_promote_batch,
         unit_memory_buy_batch,
         set_my_party,
-    ]
+        get_box_table,
+    ],
+    hidden=True,
+    visible_in_clan=True,
 )
 
 danger_modules = ModuleList(
@@ -163,7 +190,8 @@ danger_modules = ModuleList(
     [
         gacha_start,
         gacha_exchange_chara,
-    ]
+    ],
+    hidden_in_clan=True,
 )
 
 tool_modules = ModuleList(
@@ -172,10 +200,11 @@ tool_modules = ModuleList(
     [
         # cook_pudding,
         half_schedule,
-        search_box,
-        refresh_box,
+        caravan_play,
+        caravan_shop_buy,
         ex_equip_info,
         travel_team_view,
+        missing_emblem,
         get_clan_support_unit,
         clear_my_party,
         remove_cb_support,
