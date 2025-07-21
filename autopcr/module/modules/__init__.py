@@ -200,6 +200,7 @@ tool_modules = ModuleList(
     [
         # cook_pudding,
         half_schedule,
+        set_my_party,
         caravan_play,
         caravan_shop_buy,
         ex_equip_info,
