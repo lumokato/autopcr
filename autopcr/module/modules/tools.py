@@ -970,8 +970,8 @@ class set_my_party(Module):
                 if tab_number >= 6:
                     raise AbortError("队伍数量超过上限")
 
-            title = party[i].strip() + "记得借人"
-            unit_list = [u.split('\t') for u in party[i + 1 : i + 1 + 5]]
+            title = party[i].strip()# + "记得借人"
+            unit_list = [u.split('    ') for u in party[i + 1 : i + 1 + 5]]
 
             own_unit = [u for u in unit_list if int(u[0]) in client.data.unit]
             not_own_unit = [u for u in unit_list if int(u[0]) not in client.data.unit]

@@ -86,11 +86,12 @@ daily_modules = ModuleList(
 
         smart_very_hard_sweep,
         mirai_very_hard_sweep,
+
+        last_quest_sweep,
         
         smart_shiori_sweep,
 
         last_hard_quest_sweep,
-        last_quest_sweep,
 
         all_in_hatsune,
         
@@ -200,6 +201,7 @@ tool_modules = ModuleList(
     [
         # cook_pudding,
         half_schedule,
+        set_my_party,
         caravan_play,
         caravan_shop_buy,
         ex_equip_info,
