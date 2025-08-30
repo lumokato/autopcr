@@ -7,6 +7,7 @@ from .caravan import *
 from .clan import *
 from .cron import *
 from .daily import *
+from .exequip import *
 from .gacha import *
 from .hatsune import *
 from .room import *
@@ -200,15 +201,19 @@ tool_modules = ModuleList(
     'tool',
     [
         # cook_pudding,
+        ex_equip_rank_up,
+        ex_equip_enhance_up,
         half_schedule,
         set_my_party,
         caravan_play,
         caravan_shop_buy,
+        clan_battle_knive,
         ex_equip_info,
         travel_team_view,
         missing_emblem,
         get_clan_support_unit,
         clear_my_party,
+        remove_cb_ex_equip,
         remove_cb_support,
         redeem_unit_swap,
         jjc_back,
