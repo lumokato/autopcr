@@ -20,7 +20,10 @@ class UnitController(Module):
     auto_level_up : bool = True
     auto_rank_up : bool = True
     auto_unique1_slot: bool = True
+    to_max_level: bool = True
     use_raw_ore : bool = True
+    
+    E = 100_000_000
 
     skill_name = {
         eSkillLocationCategory.UNION_BURST_SKILL: "UB",
@@ -178,11 +181,18 @@ class UnitController(Module):
             await self.client.unit_level_up(self.unit.id, cost_potion)
 
     async def unit_level_up_aware(self, target_level: int, limit: Union[GrowthParameter, None] = None):
+        level_limit = self.client.data.team_level + (10 if self.unit.exceed_stage else 0)
+        if self.to_max_level:
+            target_level = min(target_level, level_limit)
+            if self.unit.unit_level >= level_limit:
+                raise AbortError(f"{self.unit_name}未突破，已达当前可提升的最高等级{level_limit}")
+            if target_level > level_limit:
+                self._log(f"{self.unit_name}未突破，将升级至最高允许的等级{level_limit}")
+
         if limit and target_level > limit.unit_level and self.unit.unit_level < limit.unit_level:
                 self._log(f"{self.unit_name}目标等级{target_level}超过了免费可提升等级{limit.unit_level},先提升至等级{limit.unit_level}")
                 await self.unit_level_up_aware(limit.unit_level, limit)
 
-        level_limit = self.client.data.team_level + (10 if self.unit.exceed_stage else 0)
         if target_level > level_limit:
             raise AbortError(f"{self.unit_name}目标等级{target_level}超过了可提升的最高等级{level_limit}，无法升级")
 
@@ -742,8 +752,10 @@ class unit_set_unique_equip_growth(UnitController):
         self.unit_id = int(unit_id)
         await self.set_unique_growth_unit()
 
-@description('支持全部角色，装备星级-1表示不穿装备，自动拉等级指当前等级不足以穿装备或提升技能等级，将会提升角色等级，自动拉品级指当前品级不足以装备专武时，会提升角色品级，自动专武1指开专武2未开专武1时自动开专武1，使用原矿指装备不足时用原矿补充')
+@description('支持全部角色，装备星级-1表示不穿装备，自动拉等级指当前等级不足以穿装备或提升技能等级，将会提升角色等级，自动拉品级指当前品级不足以装备专武时，会提升角色品级，自动专武1指开专武2未开专武1时自动开专武1，使用原矿指装备不足时用原矿补充'
+             '\n等级升至上限：在当前升级条件下，升级至角色允许的等级上限（比如未突破角色升级至突破后等级，开启该选项可以升级至最大的未突破等级，避免升级失败）')
 @name('拉角色练度')
+@booltype("unit_promote_to_max_level", "等级升至上限", False)
 @booltype("unit_promote_unique2_when_fail_to_unique_equip2", "自动专武1", False)
 @booltype("unit_promote_rank_when_fail_to_unique_equip", "自动拉品级", False)
 @booltype("unit_promote_level_when_fail_to_equip_or_skill", "自动拉等级", False)
@@ -774,6 +786,7 @@ class unit_promote(UnitController):
         self.auto_rank_up = bool(self.get_config('unit_promote_rank_when_fail_to_unique_equip'))
         self.use_raw_ore = bool(self.get_config('unit_promote_rank_use_raw_ore'))
         self.auto_unique1_slot = bool(self.get_config('unit_promote_unique2_when_fail_to_unique_equip2'))
+        self.to_max_level = bool(self.get_config('unit_promote_to_max_level'))
 
         target_level = int(self.get_config('unit_promote_level'))
         target_promotion_rank = int(self.get_config('unit_promote_rank'))
@@ -951,3 +964,168 @@ class unit_memory_buy_batch(UnitController):
 
         if summary:
             self._warn(f"将购买记忆碎片:\n" + '\n'.join(summary))
+
+
+@description(
+    "批量角色突破，只使用角色碎片进行突破"
+    "\n忽略盈余：默认只有在角色碎片完全盈余的条件下才可以进行突破，开启后可忽略盈余检查"
+    "\n保留Mana下限：妈的钱包+现有Mana小于该值时停止突破"
+)
+@name("角色突破")
+@unitlist("unit_exceed_units", "角色")
+@booltype("unit_exceed_ignore_memory", "忽略盈余", False)
+@inttype("unit_exceed_mana_keep", "保留Mana下限（亿）", 10, range(1000))
+@default(False)
+class unit_exceed(UnitController):
+    async def do_task(self, client: pcrclient):
+        self.client = client
+        unit_list = self.get_config("unit_exceed_units")
+        ignore_memory = self.get_config("unit_exceed_ignore_memory")
+        minimum_mana_keep = self.get_config("unit_exceed_mana_keep")
+
+        for unit_id in unit_list:
+            self.unit_id = int(unit_id)
+            if self.unit_id not in self.client.data.unit:
+                self._warn(f"未解锁角色{self.unit_name}")
+                continue
+
+            if self.unit.exceed_stage:
+                self._warn(f"{self.unit_name}已突破，无需突破")
+                continue
+            
+            if self.unit.unit_rarity < 5:
+                self._warn(f"{self.unit_name}不是5星角色，无法突破")
+                continue
+
+            client = self.client
+            token = (eInventoryType.Item, self.memory_id)
+            all_memory_demand = client.data.get_unit_memory_demand(self.unit_id)
+            exceed_memory_demand = db.exceed_level_unit_required[unit_id].consume_num_1
+            exceed_mana_demand = db.exceed_level_unit_required[unit_id].consume_num_2
+            memory_inventory = client.data.get_inventory(token)
+            all_memory_gap = all_memory_demand - memory_inventory
+
+            if not ignore_memory and all_memory_gap > 0:
+                self._warn(
+                    f"{self.unit_name}记忆碎片总需求{all_memory_demand}，库存{memory_inventory}，不满足突破条件"
+                )
+                continue
+
+            if exceed_memory_demand > memory_inventory:
+                self._warn(
+                    f"{self.unit_name}突破所需记忆碎片{exceed_memory_demand}，库存{memory_inventory}，不满足突破条件"
+                )
+                continue
+
+            mana_keep = self.client.data.get_mana(include_bank=True)
+            if (mana_keep - exceed_mana_demand) < minimum_mana_keep * 100000000:
+                raise AbortError(
+                    f"{self.unit_name}突破所需Mana{exceed_mana_demand/self.E}亿，"
+                    f"当前Mana{round(mana_keep/self.E, 2)}亿，"
+                    f"设置的保留Mana下限{minimum_mana_keep}亿，不满足突破条件"
+                )
+
+            await self.client.prepare_mana(exceed_mana_demand)
+
+            await client.unit_exceed_level_limit(
+                unit_id=self.unit_id,
+                exceed_stage=1,
+                cost_item_list=[
+                    InventoryInfoPost(
+                        type=db.zmana[0], id=db.zmana[1], count=exceed_mana_demand
+                    ),
+                    InventoryInfoPost(
+                        type=token[0], id=token[1], count=exceed_memory_demand
+                    ),
+                ],
+            )
+            self._log(f"{self.unit_name}突破成功")
+
+@description(
+    "批量角色升星"
+    "\n忽略盈余：默认只有在角色碎片完全盈余的条件下才可以进行升星，开启后可忽略盈余检查"
+    "\n升至最高星级：开启后会升级至填写的目标星级范围内的最大可升级星级"
+)
+@name("角色升星")
+@unitlist("unit_evolution_units", "角色")
+@singlechoice("unit_evolution_to_rarity", "目标星级", 5, range(2, 6))
+@booltype("unit_evolution_to_max_rarity", "升至最高星级", False)
+@booltype("unit_evolution_ignore_memory", "忽略盈余", False)
+@default(False)
+class unit_evolution(UnitController):
+    async def do_task(self, client: pcrclient):
+        self.client = client
+        unit_list = self.get_config("unit_evolution_units")
+        target_rarity = self.get_config("unit_evolution_to_rarity")
+        to_max_rarity = self.get_config("unit_evolution_to_max_rarity")
+        ignore_memory = self.get_config("unit_evolution_ignore_memory")
+
+        for unit_id in unit_list:
+            self.unit_id = int(unit_id)
+            if self.unit_id not in self.client.data.unit:
+                self._warn(f"未解锁角色{self.unit_name}")
+                continue
+
+            if self.unit.unit_rarity >= target_rarity:
+                self._warn(f"{self.unit_name}已到目标{target_rarity}星，无需升星")
+                continue
+
+            client = self.client
+            token = (eInventoryType.Item, self.memory_id)
+            required_dict = db.rarity_up_required[unit_id]
+            all_memory_demand = client.data.get_unit_memory_demand(self.unit_id)
+            memory_demand = {
+                i: sum(
+                    required_dict[i][token]
+                    for i in range(self.unit.unit_rarity + 1, i + 1)
+                )
+                for i in range(self.unit.unit_rarity + 1, target_rarity + 1)
+            }
+            rarity_memory_demand = memory_demand[target_rarity]
+            memory_inventory = client.data.get_inventory(token)
+            all_memory_gap = all_memory_demand - memory_inventory
+
+            if not ignore_memory and all_memory_gap > 0:
+                self._warn(
+                    f"{self.unit_name}记忆碎片总需求{all_memory_demand}，库存{memory_inventory}，不满足升星条件"
+                )
+                continue
+
+            if not to_max_rarity and rarity_memory_demand > memory_inventory:
+                self._warn(
+                    f"{self.unit_name}升至{target_rarity}星所需记忆碎片{rarity_memory_demand}，库存{memory_inventory}，不满足升星条件"
+                )
+                continue
+
+            min_memory_demand = min(memory_demand.values())
+            if min_memory_demand > memory_inventory:
+                self._warn(
+                    f"{self.unit_name}碎片库存{memory_inventory}，升星最低需要记忆碎片{min_memory_demand}，不满足升星条件"
+                )
+                continue
+
+            to_rarity = min(
+                target_rarity,
+                max(k for k, v in memory_demand.items() if memory_inventory >= v),
+            )
+            if to_rarity != target_rarity:
+                self._log(
+                    f"{self.unit_name}记忆碎片库存{memory_inventory}，升级至{target_rarity}星需要{rarity_memory_demand}碎片"
+                    f"，最大可升级至{to_rarity}星"
+                )
+
+            # 1->2需要2w mana，2->3需要3w mana，以此类推
+            mana = sum(
+                10_000 * i for i in range(self.unit.unit_rarity + 1, to_rarity + 1)
+            )
+            if not await self.client.prepare_mana(mana):  # 这点mana都没了吗
+                raise AbortError(f"mana不足，升星共需{mana}")
+
+            await client.unit_multi_evolution(
+                unit_id=self.unit_id,
+                current_rarity=self.unit.unit_rarity,
+                after_rarity=to_rarity,
+                current_gold_num=self.client.data.get_mana(),
+                current_memory_piece_num=memory_inventory,
+            )
+            self._log(f"{self.unit_name}升星至{to_rarity}星")
