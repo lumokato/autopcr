@@ -104,8 +104,8 @@ daily_modules = ModuleList(
 
         jjc_daily,
         pjjc_daily,
-        unit_equip_enhance_up,
-        unit_skill_level_up,
+        # unit_equip_enhance_up,
+        # unit_skill_level_up,
 
         mission_receive_last,
         seasonpass_accept,
@@ -202,7 +202,7 @@ tool_modules = ModuleList(
     '工具',
     'tool',
     [
-        return_jewel,
+        # return_jewel,
         # cook_pudding,
         ex_equip_rank_up,
         ex_equip_enhance_up,
