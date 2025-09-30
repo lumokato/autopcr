@@ -69,6 +69,7 @@ daily_modules = ModuleList(
         special_underground_skip,
         tower_cloister_sweep,
         jjc_reward,
+        xinsui8_sweep,
         xinsui7_sweep,
         xinsui6_sweep,
         xinsui5_sweep,
