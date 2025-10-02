@@ -66,7 +66,7 @@ daily_modules = ModuleList(
         explore_exp,
         explore_mana,
         underground_skip,
-        underground_donate,
+        # underground_donate,
         special_underground_skip,
         tower_cloister_sweep,
         jjc_reward,
@@ -85,15 +85,13 @@ daily_modules = ModuleList(
         hatsune_dear_reading,
         present_receive,
         smart_sweep,
+        mirai_very_hard_sweep,
         smart_hard_sweep,
+        smart_shiori_sweep,
+        last_normal_quest_sweep,
         smart_normal_sweep,
 
         smart_very_hard_sweep,
-        mirai_very_hard_sweep,
-
-        # last_quest_sweep,
-        
-        smart_shiori_sweep,
 
         last_hard_quest_sweep,
 
