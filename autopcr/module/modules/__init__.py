@@ -19,6 +19,7 @@ from .tower import *
 from .tools import *
 from .travel import *
 from .unit import *
+from .talent import *
 
 @dataclass
 class ModuleList:
@@ -69,6 +70,7 @@ daily_modules = ModuleList(
         special_underground_skip,
         tower_cloister_sweep,
         jjc_reward,
+        talent_sweep,
         xinsui8_sweep,
         xinsui7_sweep,
         xinsui6_sweep,
@@ -103,8 +105,6 @@ daily_modules = ModuleList(
         hatsune_gacha_exchange,
         hatsune_mission_accept2,
 
-        jjc_daily,
-        pjjc_daily,
         # unit_equip_enhance_up,
         # unit_skill_level_up,
 
@@ -226,5 +226,6 @@ tool_modules = ModuleList(
         pjjc_info,
         pjjc_def_shuffle_team,
         pjjc_atk_shuffle_team,
+        query_deep_progress,
     ]
 )

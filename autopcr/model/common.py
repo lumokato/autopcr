@@ -1579,7 +1579,7 @@ class StoryBookmarkIniSetting(BaseModel):
     story_bookmark_limit_count: int = None
 class TalentQuestIniSetting(BaseModel):
     DailyBonusUseLimitCount: int = None
-    DailyClearLimitCount: int = None
+    daily_clear_limit_count: int = None
     recovery_max_count: int = None
     RecoveryCost: int = None
 class MyPartyIniSetting(BaseModel):
@@ -1634,7 +1634,7 @@ class IniSetting(BaseModel):
     caravan: CaravanSetting = None
     multi_rank_unit_limit: MultiRankUnitLimitSetting = None
     story_bookmark: StoryBookmarkIniSetting = None
-    TalentQuest: TalentQuestIniSetting = None
+    talent_quest: TalentQuestIniSetting = None
     MyParty: MyPartyIniSetting = None
     LogBarrier: LogBarrierIniSetting = None
     Synchro: SynchroIniSetting = None
@@ -1936,11 +1936,15 @@ class ProfileUserInfo(BaseModel):
     last_login_time: int = None
     friend_num: int = None
     PrincessKnightRankTotalExp: int = None
+class TalentQuestData(BaseModel):
+    talent_id: int = None
+    clear_count: int = None    
 class ProfileQuestInfo(BaseModel):
     normal_quest: List[int] = None
     hard_quest: List[int] = None
     very_hard_quest: List[int] = None
     byway_quest: int = None
+    talent_quest: List[TalentQuestData] = None
 class SupportUnitForProfile(BaseModel):
     position: int = None
     unit_data: UnitDataLight = None
@@ -2872,7 +2876,7 @@ class StoryBookmark(BaseModel):
     bookmark_info: StoryBookmarkInfo = None
     StoryGroupId: int = None
 class TalentQuestAreaInfo(BaseModel):
-    TalentId: int = None
+    talent_id: int = None
     DailyBonusUseCount: int = None
     daily_clear_count: int = None
     daily_recovery_count: int = None
@@ -2900,7 +2904,7 @@ class RenameAvailableTimes(BaseModel):
     user_name: int = None
     user_comment: int = None
 class TalentQuestRecoverInfo(BaseModel):
-    TalentId: int = None
+    talent_id: int = None
     daily_recovery_count: int = None
 class ExchangeRewards(BaseModel):
     id: int = None
