@@ -220,6 +220,8 @@ tool_modules = ModuleList(
         remove_cb_ex_equip,
         remove_cb_support,
         redeem_unit_swap,
+        query_deep_progress,
+        
         jjc_back,
         pjjc_back,
         jjc_info,
