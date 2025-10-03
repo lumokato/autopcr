@@ -491,12 +491,12 @@ class HomeIndexResponse(responses.HomeIndexResponse):
         mgr.quest_dict.update(shiori_dict)
 
         # if self.talent_quest_area_info:
-        #     mgr.talent_quest_area_info = {
-        #         v.talent_id: v for v in self.talent_quest_area_info
-        #     }
+        mgr.talent_quest_area_info = {
+            v.talent_id: v for v in self.talent_quest_area_info
+        }
 
         # if self.cleared_talent_quest_id_list:
-        #     mgr.cleared_talent_quest_id_set |= set(self.cleared_talent_quest_id_list)
+        mgr.cleared_talent_quest_id_set |= set(self.cleared_talent_quest_id_list)
 
         mgr.ready = True
 
