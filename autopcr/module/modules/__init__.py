@@ -222,7 +222,7 @@ tool_modules = ModuleList(
         remove_cb_ex_equip,
         remove_cb_support,
         redeem_unit_swap,
-        query_deep_progress,
+        query_player_profile,
         
         jjc_back,
         pjjc_back,
@@ -230,6 +230,5 @@ tool_modules = ModuleList(
         pjjc_info,
         pjjc_def_shuffle_team,
         pjjc_atk_shuffle_team,
-        query_deep_progress,
     ]
 )
