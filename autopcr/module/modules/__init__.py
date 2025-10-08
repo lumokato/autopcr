@@ -66,7 +66,7 @@ daily_modules = ModuleList(
         explore_exp,
         explore_mana,
         underground_skip,
-        underground_donate,
+        # underground_donate,
         special_underground_skip,
         tower_cloister_sweep,
         jjc_reward,
@@ -89,6 +89,11 @@ daily_modules = ModuleList(
         mirai_very_hard_sweep,
         smart_hard_sweep,
         smart_shiori_sweep,
+        last_normal_quest_sweep,
+        smart_normal_sweep,
+
+        smart_very_hard_sweep,
+
         last_hard_quest_sweep,
         last_normal_quest_sweep,
         lazy_normal_sweep,
@@ -227,6 +232,5 @@ tool_modules = ModuleList(
         pjjc_info,
         pjjc_def_shuffle_team,
         pjjc_atk_shuffle_team,
-        query_deep_progress,
     ]
 )

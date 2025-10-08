@@ -533,27 +533,16 @@ class smart_sweep(DIY_sweep):
 @description('''
 开新图时的便捷设置，将循环刷取所选关卡
 '''.strip())
-@name("刷新图")
-@conditional_execution1("last_quest_run_time", ['n庆典'])
-@inttype("last_sweep_quests_count", "刷取次数", 1, [i for i in range(41)])
-@inttype("last_sweep_quests_amount", "自动刷取关卡数量", 0, [i for i in range(41)])
-@multichoice("last_sweep_quests", '手选刷取关卡', [], db.last_normal_quest_candidate)
+@name("刷最新n图")
+@conditional_execution1("last_normal_quest_run_time", ['n庆典'])
+@LastNormalQuestConfig("last_normal_quests_sweep", "刷取关卡", [])
 @default(False)
 @tag_stamina_consume
-class last_quest_sweep(DIY_sweep):
+class last_normal_quest_sweep(DIY_sweep):
     async def get_loop_quest(self, client: pcrclient) -> List[Tuple[int, int]]:
-        last_sweep_quests: List[str] = self.get_config('last_sweep_quests')
-        last_sweep_quests_amount: int = int(self.get_config('last_sweep_quests_amount'))
-        last_sweep_quests_count: int = int(self.get_config('last_sweep_quests_count'))
-        quest = []
-        if last_sweep_quests_amount:
-            filtered_quests = sorted([q for q in client.data.finishedQuest if q >= 11000000 and q < 12000000], reverse=True)
-            if len(filtered_quests) > last_sweep_quests_amount:
-                filtered_quests = filtered_quests[:last_sweep_quests_amount]
-            if filtered_quests:
-                quest: List[Tuple[int, int]] = [(int(id), last_sweep_quests_count) for id in filtered_quests]
-        else:
-            quest: List[Tuple[int, int]] = [(int(id.split(':')[0]), last_sweep_quests_count) for id in last_sweep_quests]
+        last_sweep_quests: List[int] = self.get_config('last_normal_quests_sweep')
+        last_sweep_quests_count: int = 3
+        quest: List[Tuple[int, int]] = [(id, last_sweep_quests_count) for id in last_sweep_quests]
         return quest
 
 @description('''
