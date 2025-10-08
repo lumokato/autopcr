@@ -71,6 +71,7 @@ daily_modules = ModuleList(
         tower_cloister_sweep,
         jjc_reward,
         talent_sweep,
+        smart_very_hard_sweep,
         xinsui8_sweep,
         xinsui7_sweep,
         xinsui6_sweep,
@@ -86,16 +87,9 @@ daily_modules = ModuleList(
         present_receive,
         smart_sweep,
         smart_hard_sweep,
-        smart_normal_sweep,
-
-        smart_very_hard_sweep,
-        mirai_very_hard_sweep,
-
-        # last_quest_sweep,
-        
         smart_shiori_sweep,
-
-        last_hard_quest_sweep,
+        last_normal_quest_sweep,
+        lazy_normal_sweep,
 
         all_in_hatsune,
         
@@ -118,7 +112,9 @@ daily_modules = ModuleList(
         jjc_shop,
         pjjc_shop,
         clanbattle_shop,
-        
+        master_shop_talent,
+        master_shop,
+
         clan_equip_request,
         clan_equip_donate,
         love_up,
@@ -165,7 +161,6 @@ unit_modules = ModuleList(
     'unit',
     [
         search_unit,
-        master_shop,
         missing_unit,
         refresh_box,
         unit_promote,
@@ -203,6 +198,8 @@ tool_modules = ModuleList(
     '工具',
     'tool',
     [
+        find_talent_quest,
+        find_clan_talent_quest,
         # return_jewel,
         # cook_pudding,
         ex_equip_rank_up,

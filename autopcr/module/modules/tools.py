@@ -888,18 +888,17 @@ class get_need_xinsui(Module):
         msg = '\n'.join(msg)
         self._log(msg)
 
-@inttype("start_rank", "起始品级", 1, [i for i in range(1, 99)])
-@booltype("like_unit_only", "收藏角色", False)
-@description('统计指定角色拉满品级所需的装备减去库存的结果，不考虑仓库中的大件装备')
+@description('统计考虑角色拉满品级所需的装备减去库存的结果，不考虑仓库中的大件装备')
 @name('获取装备缺口')
+@UnitListConfig('get_need_equip_consider_units', "考虑角色")
 @notlogin(check_data = True)
 @default(True)
 class get_need_equip(Module):
     async def do_task(self, client: pcrclient):
-        start_rank: int = self.get_config("start_rank")
-        like_unit_only: bool = self.get_config("like_unit_only")
+        consider_units: List[int] = self.get_config("get_need_equip_consider_units")
 
-        demand = list(client.data.get_equip_demand_gap(start_rank=start_rank, like_unit_only=like_unit_only).items())
+        grow_parameter_list = client.data.get_synchro_parameter()
+        demand = list(client.data.get_equip_demand2_gap(consider_units, grow_parameter_list = grow_parameter_list).items())
 
         demand = sorted(demand, key=lambda x: x[1], reverse=True)
 
@@ -908,19 +907,38 @@ class get_need_equip(Module):
         msg = '\n'.join([f'{db.get_inventory_name_san(item[0])}: {"缺少" if item[1] > 0 else "盈余"}{abs(item[1])}片' for item in demand])
         self._log(msg)
 
-@inttype("start_rank", "起始品级", 1, [i for i in range(1, 99)])
-@booltype("like_unit_only", "收藏角色", False)
-@description('根据装备缺口计算刷图优先级，越前的优先度越高')
+# @inttype("start_rank", "起始品级", 1, [i for i in range(1, 99)])
+# @booltype("like_unit_only", "收藏角色", False)
+# @description('统计指定角色拉满品级所需的装备减去库存的结果，不考虑仓库中的大件装备')
+# @name('获取装备缺口(弃用)')
+# @notlogin(check_data = True)
+# @default(True)
+# class get_need_equip(Module):
+#     async def do_task(self, client: pcrclient):
+#         start_rank: int = self.get_config("start_rank")
+#         like_unit_only: bool = self.get_config("like_unit_only")
+#
+#         demand = list(client.data.get_equip_demand_gap(start_rank=start_rank, like_unit_only=like_unit_only).items())
+#
+#         demand = sorted(demand, key=lambda x: x[1], reverse=True)
+#
+#         demand = filter(lambda item: item[1] > -100, demand)
+#
+#         msg = '\n'.join([f'{db.get_inventory_name_san(item[0])}: {"缺少" if item[1] > 0 else "盈余"}{abs(item[1])}片' for item in demand])
+#         self._log(msg)
+
+@description('根据考虑角色的装备缺口计算刷图优先级，越前的优先度越高')
 @name('刷图推荐')
+@UnitListConfig('get_normal_quest_recommand_consider_units', "考虑角色")
 @notlogin(check_data = True)
 @default(True)
 class get_normal_quest_recommand(Module):
     async def do_task(self, client: pcrclient):
-        start_rank: int = self.get_config("start_rank")
-        like_unit_only: bool = self.get_config("like_unit_only")
+        consider_units: List[int] = self.get_config("get_normal_quest_recommand_consider_units")
 
         quest_list: List[int] = [id for id, quest in db.normal_quest_data.items() if db.parse_time(quest.start_time) <= apiclient.datetime]
-        require_equip = client.data.get_equip_demand_gap(start_rank = start_rank, like_unit_only = like_unit_only)
+        grow_parameter_list = client.data.get_synchro_parameter()
+        require_equip = client.data.get_equip_demand2_gap(consider_units, grow_parameter_list = grow_parameter_list)
         quest_weight = client.data.get_quest_weght(require_equip)
         quest_id = sorted(quest_list, key = lambda x: quest_weight[x], reverse = True)
         tot = []
@@ -937,6 +955,36 @@ class get_normal_quest_recommand(Module):
 
         msg = '\n--------\n'.join(tot)
         self._log(msg)
+
+# @inttype("start_rank", "起始品级", 1, [i for i in range(1, 99)])
+# @booltype("like_unit_only", "收藏角色", False)
+# @description('根据装备缺口计算刷图优先级，越前的优先度越高')
+# @name('刷图推荐(弃用)')
+# @notlogin(check_data = True)
+# @default(True)
+# class get_normal_quest_recommand(Module):
+#     async def do_task(self, client: pcrclient):
+#         start_rank: int = self.get_config("start_rank")
+#         like_unit_only: bool = self.get_config("like_unit_only")
+#
+#         quest_list: List[int] = [id for id, quest in db.normal_quest_data.items() if db.parse_time(quest.start_time) <= apiclient.datetime]
+#         require_equip = client.data.get_equip_demand_gap(start_rank = start_rank, like_unit_only = like_unit_only)
+#         quest_weight = client.data.get_quest_weght(require_equip)
+#         quest_id = sorted(quest_list, key = lambda x: quest_weight[x], reverse = True)
+#         tot = []
+#         for i in range(5):
+#             id = quest_id[i]
+#             name = db.get_quest_name(id)
+#             tokens: List[ItemType] = [i for i in db.normal_quest_rewards[id]]
+#             msg = f"{name}:\n" + '\n'.join([
+#                 (f'{db.get_inventory_name_san(token)}: {"缺少" if require_equip[token] > 0 else "盈余"}{abs(require_equip[token])}片')
+#                 for token in tokens
+#                 if require_equip[token] > -100
+#                 ])
+#             tot.append(msg.strip())
+#
+#         msg = '\n--------\n'.join(tot)
+#         self._log(msg)
 
 @description('从指定面板的指定队开始清除指定数量的编队')
 @inttype("clear_team_num", "队伍数", 1, [i for i in range(1, 11)])
@@ -964,7 +1012,7 @@ class clear_my_party(Module):
 
 @description('从指定面板的指定队开始设置，并调整星级。若干行重复，标题+若干行角色ID	角色名字	角色等级	角色星级\n忽略角色名字和角色等级')
 @texttype("set_my_party_text", "队伍阵容", "")
-@inttype("party_start_num", "初始队伍", 1, [i for i in range(1, 11)])
+@inttype("party_start_num", "初始队伍", 1, [i for i in range(1, 21)])
 @inttype("tab_start_num", "初始面板", 1, [i for i in range(1, 7)])
 @name('设置编队')
 class set_my_party(Module):
@@ -1025,7 +1073,7 @@ class set_my_party(Module):
                 self._log(f"设置了{title}")
 
             party_number += 1
-            if party_number == 11:
+            if party_number == 21:
                 tab_number += 1
                 party_number = 1
 
@@ -1063,137 +1111,3 @@ class return_jewel(Module):
         self._log(f"当前处于最大突破等级角色数: {count_max_level}")
         self._log(f"返钻数量: {return_jewel_count} (向上取整实际获得: {return_jewel_count_10})")
         self._log(f"当前box最多返钻数量: {max_return_jewel_count}")
-
-@texttype("target_viewer_id", "玩家ID", "")
-@description('通过玩家ID查询玩家公开信息')
-@name('查询玩家资料')
-@default(False)
-class query_player_profile(Module):
-    async def do_task(self, client: pcrclient):
-        viewer_id_str: str = self.get_config("target_viewer_id").strip()
-        
-        if not viewer_id_str:
-            raise AbortError("请输入玩家ID")
-        
-        # 验证是否为全数字
-        if not viewer_id_str.isdigit():
-            raise AbortError("玩家ID必须是数字")
-        
-        viewer_id: int = int(viewer_id_str)
-        
-        if viewer_id <= 0:
-            raise AbortError("请输入有效的玩家ID")
-        
-        self._log(f"正在查询玩家ID: {viewer_id}")
-        
-        try:
-            # 调用get_profile接口
-            profile_data = await client.get_profile(viewer_id)
-            
-            # 直接打印原始数据
-            self._log(f"查询成功！玩家数据:")
-            self._log(f"原始响应数据: {profile_data}")
-            
-            # 如果有user_info，显示基础信息
-            if hasattr(profile_data, 'user_info') and profile_data.user_info:
-                user_info = profile_data.user_info
-                self._log(f"玩家名称: {user_info.user_name}")
-                self._log(f"团队等级: {user_info.team_level}")
-                self._log(f"总战力: {user_info.total_power}")
-                
-                # 如果有公会信息
-                if hasattr(profile_data, 'clan_name') and profile_data.clan_name:
-                    self._log(f"公会: {profile_data.clan_name}")
-            
-        except Exception as e:
-            self._log(f"查询失败: {e}")
-            raise AbortError(f"无法获取玩家 {viewer_id} 的资料")
-
-@description('查询当前账号所在公会所有成员的深域进度')
-@name('查询公会成员深域进度')
-@default(True)
-class query_deep_progress(Module):
-    # 提取深域进度查询逻辑为单独方法
-    async def _get_deep_progress(self, client: pcrclient, viewer_id: int, member_name: str = None) -> str:
-        try:
-            # 调用get_profile接口
-            profile_data = await client.get_profile(viewer_id)
-            
-            # 显示玩家基本信息
-            player_name = ""
-            if hasattr(profile_data, 'user_info') and profile_data.user_info:
-                user_info = profile_data.user_info
-                player_name = user_info.user_name
-                
-            # 格式化玩家标识
-            player_identifier = f"{member_name if member_name else player_name} (ID: {viewer_id})"
-            
-            # 检查是否有quest_info和talent_quest数据
-            if hasattr(profile_data, 'quest_info') and profile_data.quest_info:
-                quest_info = profile_data.quest_info
-                
-                if hasattr(quest_info, 'talent_quest') and quest_info.talent_quest:
-                    # 属性对应关系：火、水、风、光、暗
-                    attributes = ["火", "水", "风", "光", "暗"]
-                    progress_list = []
-                    
-                    # 按顺序处理五个属性
-                    for i, attr in enumerate(attributes):
-                        if i < len(quest_info.talent_quest):
-                            talent_data = quest_info.talent_quest[i]
-                            # 获取clear_count值
-                            progress_value = talent_data.clear_count if hasattr(talent_data, 'clear_count') else 0
-                            
-                            # 转换算法：progress_value -> a-b格式
-                            # a大关 = (progress_value - 1) // 10 + 1
-                            # b小关 = (progress_value - 1) % 10 + 1
-                            if progress_value > 0:
-                                big_stage = (progress_value - 1) // 10 + 1
-                                small_stage = (progress_value - 1) % 10 + 1
-                                progress_str = f"{big_stage}-{small_stage}"
-                            else:
-                                progress_str = "0-0"
-                            
-                            progress_list.append(f"{attr}: {progress_str}")
-                        else:
-                            progress_list.append(f"{attr}: 0-0")
-                    
-                    # 格式化输出
-                    deep_progress_msg = f"{player_identifier} 深域进度：" + " ".join(progress_list)
-                    return deep_progress_msg
-                    
-                else:
-                    return f"{player_identifier} 暂无深域进度数据"
-                    
-            else:
-                return f"{player_identifier} 暂无任务信息数据"
-                
-        except Exception as e:
-            return f"{player_identifier} 查询失败: {e}"
-    
-    async def do_task(self, client: pcrclient):
-        try:
-            # 获取当前登录账号的信息
-            try:
-                clan_info = await client.get_clan_info()
-                if clan_info and hasattr(clan_info, 'clan') and clan_info.clan:
-                    clan_name = clan_info.clan.detail.clan_name if hasattr(clan_info.clan, 'detail') and hasattr(clan_info.clan.detail, 'clan_name') else "未知"
-                    self._log(f"公会: {clan_name}")
-                    
-                    if hasattr(clan_info.clan, 'members'):
-                        self._log(f"公会成员列表({len(clan_info.clan.members)}人):")
-                        for member in clan_info.clan.members:
-                            # 使用格式化输出，确保ID和昵称对齐
-                            self._log(f"ID: {member.viewer_id}, 昵称: {member.name}")
-                            # 查询该成员的深域进度
-                            member_progress = await self._get_deep_progress(client, member.viewer_id, member.name)
-                            self._log(member_progress)
-                    else:
-                        self._log("无法获取公会成员列表")
-                else:
-                    self._log("无法获取公会信息")
-            except Exception as clan_e:
-                self._log(f"获取公会信息失败: {clan_e}")
-        except Exception as e:
-            self._log(f"查询失败: {e}")
-            raise AbortError(f"无法获取公会成员深域进度")
