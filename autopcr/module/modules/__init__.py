@@ -93,7 +93,7 @@ daily_modules = ModuleList(
         lazy_normal_sweep,
 
         last_hard_quest_sweep,
-        last_unlock_normal_quest_sweep
+        last_unlock_normal_quest_sweep,
 
         all_in_hatsune,
         
