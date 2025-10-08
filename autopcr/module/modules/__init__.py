@@ -89,11 +89,6 @@ daily_modules = ModuleList(
         mirai_very_hard_sweep,
         smart_hard_sweep,
         smart_shiori_sweep,
-        last_normal_quest_sweep,
-        smart_normal_sweep,
-
-        smart_very_hard_sweep,
-
         last_hard_quest_sweep,
         last_normal_quest_sweep,
         lazy_normal_sweep,
@@ -224,7 +219,6 @@ tool_modules = ModuleList(
         remove_cb_ex_equip,
         remove_cb_support,
         redeem_unit_swap,
-        query_deep_progress,
         
         jjc_back,
         pjjc_back,
