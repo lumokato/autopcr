@@ -86,8 +86,10 @@ daily_modules = ModuleList(
         hatsune_dear_reading,
         present_receive,
         smart_sweep,
+        mirai_very_hard_sweep,
         smart_hard_sweep,
         smart_shiori_sweep,
+        last_hard_quest_sweep,
         last_normal_quest_sweep,
         lazy_normal_sweep,
 
