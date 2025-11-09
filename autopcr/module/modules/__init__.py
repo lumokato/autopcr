@@ -92,9 +92,8 @@ daily_modules = ModuleList(
         last_normal_quest_sweep,
         lazy_normal_sweep,
 
-        smart_very_hard_sweep,
-
         last_hard_quest_sweep,
+        last_unlock_normal_quest_sweep,
 
         all_in_hatsune,
         
@@ -222,7 +221,6 @@ tool_modules = ModuleList(
         remove_cb_ex_equip,
         remove_cb_support,
         redeem_unit_swap,
-        query_player_profile,
         
         jjc_back,
         pjjc_back,
