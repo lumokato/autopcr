@@ -90,7 +90,7 @@ daily_modules = ModuleList(
         smart_hard_sweep,
         smart_shiori_sweep,
         last_normal_quest_sweep,
-        smart_normal_sweep,
+        lazy_normal_sweep,
 
         smart_very_hard_sweep,
 
@@ -118,6 +118,7 @@ daily_modules = ModuleList(
         pjjc_shop,
         clanbattle_shop,
         master_shop_talent,
+        master_shop,
 
         clan_equip_request,
         clan_equip_donate,
@@ -165,7 +166,6 @@ unit_modules = ModuleList(
     'unit',
     [
         search_unit,
-        master_shop,
         missing_unit,
         refresh_box,
         unit_promote,

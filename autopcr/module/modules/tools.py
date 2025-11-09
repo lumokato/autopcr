@@ -888,18 +888,17 @@ class get_need_xinsui(Module):
         msg = '\n'.join(msg)
         self._log(msg)
 
-@inttype("start_rank", "起始品级", 1, [i for i in range(1, 99)])
-@booltype("like_unit_only", "收藏角色", False)
-@description('统计指定角色拉满品级所需的装备减去库存的结果，不考虑仓库中的大件装备')
+@description('统计考虑角色拉满品级所需的装备减去库存的结果，不考虑仓库中的大件装备')
 @name('获取装备缺口')
+@UnitListConfig('get_need_equip_consider_units', "考虑角色")
 @notlogin(check_data = True)
 @default(True)
 class get_need_equip(Module):
     async def do_task(self, client: pcrclient):
-        start_rank: int = self.get_config("start_rank")
-        like_unit_only: bool = self.get_config("like_unit_only")
+        consider_units: List[int] = self.get_config("get_need_equip_consider_units")
 
-        demand = list(client.data.get_equip_demand_gap(start_rank=start_rank, like_unit_only=like_unit_only).items())
+        grow_parameter_list = client.data.get_synchro_parameter()
+        demand = list(client.data.get_equip_demand2_gap(consider_units, grow_parameter_list = grow_parameter_list).items())
 
         demand = sorted(demand, key=lambda x: x[1], reverse=True)
 
@@ -908,19 +907,38 @@ class get_need_equip(Module):
         msg = '\n'.join([f'{db.get_inventory_name_san(item[0])}: {"缺少" if item[1] > 0 else "盈余"}{abs(item[1])}片' for item in demand])
         self._log(msg)
 
-@inttype("start_rank", "起始品级", 1, [i for i in range(1, 99)])
-@booltype("like_unit_only", "收藏角色", False)
-@description('根据装备缺口计算刷图优先级，越前的优先度越高')
+# @inttype("start_rank", "起始品级", 1, [i for i in range(1, 99)])
+# @booltype("like_unit_only", "收藏角色", False)
+# @description('统计指定角色拉满品级所需的装备减去库存的结果，不考虑仓库中的大件装备')
+# @name('获取装备缺口(弃用)')
+# @notlogin(check_data = True)
+# @default(True)
+# class get_need_equip(Module):
+#     async def do_task(self, client: pcrclient):
+#         start_rank: int = self.get_config("start_rank")
+#         like_unit_only: bool = self.get_config("like_unit_only")
+#
+#         demand = list(client.data.get_equip_demand_gap(start_rank=start_rank, like_unit_only=like_unit_only).items())
+#
+#         demand = sorted(demand, key=lambda x: x[1], reverse=True)
+#
+#         demand = filter(lambda item: item[1] > -100, demand)
+#
+#         msg = '\n'.join([f'{db.get_inventory_name_san(item[0])}: {"缺少" if item[1] > 0 else "盈余"}{abs(item[1])}片' for item in demand])
+#         self._log(msg)
+
+@description('根据考虑角色的装备缺口计算刷图优先级，越前的优先度越高')
 @name('刷图推荐')
+@UnitListConfig('get_normal_quest_recommand_consider_units', "考虑角色")
 @notlogin(check_data = True)
 @default(True)
 class get_normal_quest_recommand(Module):
     async def do_task(self, client: pcrclient):
-        start_rank: int = self.get_config("start_rank")
-        like_unit_only: bool = self.get_config("like_unit_only")
+        consider_units: List[int] = self.get_config("get_normal_quest_recommand_consider_units")
 
         quest_list: List[int] = [id for id, quest in db.normal_quest_data.items() if db.parse_time(quest.start_time) <= apiclient.datetime]
-        require_equip = client.data.get_equip_demand_gap(start_rank = start_rank, like_unit_only = like_unit_only)
+        grow_parameter_list = client.data.get_synchro_parameter()
+        require_equip = client.data.get_equip_demand2_gap(consider_units, grow_parameter_list = grow_parameter_list)
         quest_weight = client.data.get_quest_weght(require_equip)
         quest_id = sorted(quest_list, key = lambda x: quest_weight[x], reverse = True)
         tot = []
@@ -937,6 +955,36 @@ class get_normal_quest_recommand(Module):
 
         msg = '\n--------\n'.join(tot)
         self._log(msg)
+
+# @inttype("start_rank", "起始品级", 1, [i for i in range(1, 99)])
+# @booltype("like_unit_only", "收藏角色", False)
+# @description('根据装备缺口计算刷图优先级，越前的优先度越高')
+# @name('刷图推荐(弃用)')
+# @notlogin(check_data = True)
+# @default(True)
+# class get_normal_quest_recommand(Module):
+#     async def do_task(self, client: pcrclient):
+#         start_rank: int = self.get_config("start_rank")
+#         like_unit_only: bool = self.get_config("like_unit_only")
+#
+#         quest_list: List[int] = [id for id, quest in db.normal_quest_data.items() if db.parse_time(quest.start_time) <= apiclient.datetime]
+#         require_equip = client.data.get_equip_demand_gap(start_rank = start_rank, like_unit_only = like_unit_only)
+#         quest_weight = client.data.get_quest_weght(require_equip)
+#         quest_id = sorted(quest_list, key = lambda x: quest_weight[x], reverse = True)
+#         tot = []
+#         for i in range(5):
+#             id = quest_id[i]
+#             name = db.get_quest_name(id)
+#             tokens: List[ItemType] = [i for i in db.normal_quest_rewards[id]]
+#             msg = f"{name}:\n" + '\n'.join([
+#                 (f'{db.get_inventory_name_san(token)}: {"缺少" if require_equip[token] > 0 else "盈余"}{abs(require_equip[token])}片')
+#                 for token in tokens
+#                 if require_equip[token] > -100
+#                 ])
+#             tot.append(msg.strip())
+#
+#         msg = '\n--------\n'.join(tot)
+#         self._log(msg)
 
 @description('从指定面板的指定队开始清除指定数量的编队')
 @inttype("clear_team_num", "队伍数", 1, [i for i in range(1, 11)])
@@ -964,7 +1012,7 @@ class clear_my_party(Module):
 
 @description('从指定面板的指定队开始设置，并调整星级。若干行重复，标题+若干行角色ID	角色名字	角色等级	角色星级\n忽略角色名字和角色等级')
 @texttype("set_my_party_text", "队伍阵容", "")
-@inttype("party_start_num", "初始队伍", 1, [i for i in range(1, 11)])
+@inttype("party_start_num", "初始队伍", 1, [i for i in range(1, 21)])
 @inttype("tab_start_num", "初始面板", 1, [i for i in range(1, 7)])
 @name('设置编队')
 class set_my_party(Module):
@@ -1025,7 +1073,7 @@ class set_my_party(Module):
                 self._log(f"设置了{title}")
 
             party_number += 1
-            if party_number == 11:
+            if party_number == 21:
                 tab_number += 1
                 party_number = 1
 
