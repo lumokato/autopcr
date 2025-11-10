@@ -207,21 +207,23 @@ async def check_validate(botev: BotEvent, qq: str, cnt: int = 1):
 
 async def is_valid_qq(qq: str):
     qq = str(qq)
-    groups = (await sv.get_enable_groups()).keys()
+    enable_groups = await sv.get_enable_groups()
     bot = nonebot.get_bot()
+    
     if qq.startswith("g"):
         gid = qq.lstrip('g')
-        return gid.isdigit() and int(gid) in groups
+        return gid.isdigit() and int(gid) in enable_groups.keys()
     else:
-        for group in groups:
-            try:
-                async for member in await bot.get_group_member_list(group_id=group):
-                    if qq == str(member['user_id']):
-                        return True
-            except:
-                for member in await bot.get_group_member_list(group_id=group):
-                    if qq == str(member['user_id']):
-                        return True
+        for group_id, self_ids in enable_groups.items():
+            for self_id in self_ids:
+                try:
+                    members = await bot.get_group_member_list(group_id=group_id, self_id=self_id)
+                    for member in members:
+                        if qq == str(member['user_id']):
+                            return True
+                    break
+                except Exception as e:
+                    continue
         return False
 
 def check_final_args_be_empty(func):
@@ -1028,7 +1030,7 @@ async def set_my_party_multi(botev: BotEvent):
     while True:
         if not msg:
             break
-        if get_id_from_name(msg[0]) or msg[0].isdigit() and get_id_from_name(msg[0][1:]):
+        if get_id_from_name(msg[0]) or msg[0][0].isdigit() and get_id_from_name(msg[0][1:]):
             title = "自定义编队"
         else:
             title = msg[0]
