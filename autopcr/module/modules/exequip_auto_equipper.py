@@ -212,7 +212,6 @@ class ExEquipAutoEquipper:
         Returns:
             未分配的角色列表
         """
-        self_mirror = self
         unallocated = []
 
         for unit_id, recommendation in roles:
@@ -245,19 +244,18 @@ class ExEquipAutoEquipper:
                             await self._equip_to(unit_id, slot, inst, auto_equip)
                             allocated = True
                             break
+            # 逻辑未优化好，暂时注释掉
+            # # 尝试用rank1/0合成rank2
+            # if not allocated:
+            #     for ex_id, _ in best_equips:
+            #         if self._can_synthesize_rank2(pool, ex_id):
+            #             inst = self._synthesize_and_take_rank2(pool, ex_id)
+            #             if inst:
+            #                 await self._equip_to(unit_id, slot, inst, auto_equip)
+            #                 allocated = True
+            #                 break
 
-            # 尝试用rank1/0合成rank2
             if not allocated:
-                for ex_id, _ in best_equips:
-                    if self._can_synthesize_rank2(pool, ex_id):
-                        inst = self._synthesize_and_take_rank2(pool, ex_id)
-                        if inst:
-                            await self._equip_to(unit_id, slot, inst, auto_equip)
-                            allocated = True
-                            break
-
-            if not allocated:
-                self = self_mirror
                 unallocated.append((unit_id, recommendation))
 
         return unallocated
