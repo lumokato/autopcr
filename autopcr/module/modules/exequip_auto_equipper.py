@@ -212,6 +212,7 @@ class ExEquipAutoEquipper:
         Returns:
             未分配的角色列表
         """
+        self_mirror = self
         unallocated = []
 
         for unit_id, recommendation in roles:
@@ -256,6 +257,7 @@ class ExEquipAutoEquipper:
                             break
 
             if not allocated:
+                self = self_mirror
                 unallocated.append((unit_id, recommendation))
 
         return unallocated
