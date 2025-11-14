@@ -93,7 +93,8 @@ class ExEquipAutoEquipper:
                     continue
 
                 rarity = db.get_ex_equip_rarity(ex.ex_equipment_id)
-                if ex.protection_flag == ExEquipConstants.PROTECTION_UNLOCKED and rarity < ExEquipConstants.RARITY_PINK:
+                # if ex.protection_flag == ExEquipConstants.PROTECTION_UNLOCKED and rarity < ExEquipConstants.RARITY_PINK:
+                if rarity < ExEquipConstants.RARITY_PINK:
                     exchange.append(ExtraEquipChangeSlot(slot=slot + 1, serial_id=0))
 
             if exchange:

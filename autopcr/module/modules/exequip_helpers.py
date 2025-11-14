@@ -263,7 +263,9 @@ class ExEquipInventoryManager:
                 ex_slot = unit.ex_equip_slot[slot_idx]
                 if ex_slot.serial_id != 0:
                     ex = self.client.data.ex_equips.get(ex_slot.serial_id)
-                    if ex and ex.protection_flag == ExEquipConstants.PROTECTION_LOCKED:
+                    # if ex and ex.protection_flag == ExEquipConstants.PROTECTION_LOCKED:
+                    rarity = db.get_ex_equip_rarity(ex.ex_equipment_id)
+                    if rarity == ExEquipConstants.RARITY_PINK:
                         # 锁定的装备
                         self.locked_slots[(unit_id, slot_idx + 1)] = ex_slot.serial_id
 
