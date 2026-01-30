@@ -59,7 +59,7 @@ class lazy_normal_sweep(Module):
 
         try:
             target_quest = []
-            for i in range(10000):
+            for i in range(10):
 
                 if i % 3 == 0:
 
@@ -242,6 +242,8 @@ class simple_demand_sweep_base(Module):
         try:
             for token, _ in need_list:
                 for quest in self.get_need_quest(token):
+                    if quest.quest_id not in client.data.finishedQuest:
+                        break
                     max_times = self.get_max_times(client, quest.quest_id)
                     try:
                         resp, clear_count, no_stamina = await client.quest_skip_aware(quest.quest_id, max_times, True, True)
@@ -414,6 +416,7 @@ class mirai_very_hard_sweep(simple_demand_sweep_base):
                 need_list.append(((0, kana), target[kana] - own))
         if not need_list:
             raise SkipError("所有纯净碎片均已盈余")
+        # need_list = sorted(need_list, key=lambda x: x[1], reverse=True)
         return need_list
 
     def get_need_quest(self, token: ItemType) -> List[QuestDatum]:
@@ -561,6 +564,49 @@ class last_normal_quest_sweep(DIY_sweep):
         last_sweep_quests: List[int] = self.get_config('last_normal_quests_sweep')
         last_sweep_quests_count: int = 3
         quest: List[Tuple[int, int]] = [(id, last_sweep_quests_count) for id in last_sweep_quests]
+        return quest
+
+@description('''
+农场号临时用刷Hard
+'''.strip())
+@name("刷已解锁Hard图")
+@conditional_execution1("last_hard_quest_run_time", ['h庆典'])
+@default(False)
+@tag_stamina_consume
+class last_hard_quest_sweep(DIY_sweep):
+    async def get_start_quest(self, client: pcrclient) -> List[Tuple[int, int]]:
+        last_hard_quest: List[str] = self.get_config('last_hard_quest_run_time')
+        if last_hard_quest:
+            quest = []
+            filtered_quests = sorted([q for q in client.data.finishedQuest if q >= 12000000 and q < 14000000], reverse=True)
+            if len(filtered_quests) < 100:
+                quest: List[Tuple[int, int]] = [(int(id), 3) for id in filtered_quests]
+            else:
+                raise SkipError("解锁的Hard图超过100,判断为非农场号")
+        return quest
+
+@description('''
+农场号临时用刷Normal
+'''.strip())
+@name("刷已解锁n图")
+@conditional_execution1("last_unlock_normal_quest_run_time", ['n庆典'])
+@default(False)
+@tag_stamina_consume
+class last_unlock_normal_quest_sweep(DIY_sweep):
+    async def get_loop_quest(self, client: pcrclient) -> List[Tuple[int, int]]:
+        last_sweep_quests: List[int] = self.get_config('last_unlock_normal_quest_run_time')
+        last_sweep_quests_count: int = 3
+        quest: List[Tuple[int, int]] = [(id, last_sweep_quests_count) for id in last_sweep_quests]
+        
+        if last_sweep_quests:
+            quest = []
+            filtered_quests = sorted([q for q in client.data.finishedQuest if q >= 11000000 and q < 12000000], reverse=True)
+            if len(filtered_quests) < 300:
+                if len(filtered_quests) > 10:
+                    filtered_quests = filtered_quests[:10]
+                quest: List[Tuple[int, int]] = [(int(id), 3) for id in filtered_quests]
+            else:
+                raise SkipError("解锁的Normal图超过300,判断为非农场号")
         return quest
 
 class TalentSweep(DIY_sweep):

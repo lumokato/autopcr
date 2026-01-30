@@ -111,7 +111,7 @@ class apiclient(Container["apiclient"]):
         
         try:
             resp = await aiorequests.post(urlroot + request.url, data=apiclient._pack(request.dict(by_alias=True), key) if request.crypted else
-                request.json(by_alias=True).encode('utf8'), headers=self._headers, timeout=10)
+                request.json(by_alias=True).encode('utf8'), headers=self._headers, timeout=20)
 
             if resp.status_code != 200:
                 raise NetworkException

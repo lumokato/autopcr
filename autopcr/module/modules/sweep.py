@@ -140,6 +140,54 @@ class underground_skip(Module):
         else:
             raise SkipError("今日已扫荡地下城")
 
+
+@texttype("donate_user_list", "捐赠用户id列表", "")
+@description("写入可能的捐赠用户id")
+@name("地下城捐赠")
+@conditional_execution2("battle_time_skip", ["会战期间"], desc='会战期间跳过', check=False)
+@default(False)
+class underground_donate(Module):
+    async def do_task(self, client: pcrclient):
+        battle_time_skip = self.get_config_instance('battle_time_skip')
+        tc, _ = await battle_time_skip.do_check()
+        if tc:
+            raise SkipError("会战期间跳过捐赠")
+        
+        donate_user_list = self.get_config('donate_user_list').strip().split(',')
+        infos = await client.get_dungeon_info()
+
+        async def check_donate_id():
+            user_unit = [0, 0, 0]
+            # 查询当前工会角色
+            mem_list = []
+            req = await client.clan_other(client.data.clan)
+            for mem in req.clan.members:
+                mem_list.append(int(mem.viewer_id))
+            # 选择捐献的id
+            for donate_id in donate_user_list:
+                if int(donate_id) in mem_list:
+                    profile = await client.get_profile(int(donate_id))
+                    for unit in profile.clan_support_units:
+                        if unit.position < 3 and unit.unit_data.unit_level > user_unit[1] and unit.unit_data.unit_level - client.data.team_level < client.data.settings.dungeon.support_lv_band:
+                            # 添加角色id、等级、用户id
+                            user_unit = [unit.unit_data.id, unit.unit_data.unit_level, int(donate_id)]
+            return user_unit
+
+        async def do_donate():            
+            user_unit = await check_donate_id()
+            if user_unit[0]:
+                await client.borrow_dungeon_member(user_unit[2], user_unit[0])
+                self._log(f"已捐赠给{user_unit[2]}角色{db.unit_data[user_unit[0]].unit_name}")
+            else:
+                self._log(f"无可用捐赠用户")
+
+        rest = infos.rest_challenge_count[0].count          
+        if rest:
+            await do_donate()
+        else:
+            raise SkipError("今日已无可用次数")
+
+
 @booltype("secret_dungeon_retreat", "自动撤退", False)
 @description('只进入特别地下城，以期扫荡前5层。需首通一次。自动撤退指首通后，当前位于特别地下城，且还有挑战次数，则会撤退后再次进入，以扫荡前5层，用于只打30层。')
 @name('特别地下城扫荡')

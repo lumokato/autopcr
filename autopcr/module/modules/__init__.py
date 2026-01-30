@@ -67,6 +67,7 @@ daily_modules = ModuleList(
         explore_exp,
         explore_mana,
         underground_skip,
+        # underground_donate,
         special_underground_skip,
         tower_cloister_sweep,
         jjc_reward,
@@ -86,18 +87,21 @@ daily_modules = ModuleList(
         xinsui1_sweep,
         starcup3_sweep,
         starcup2_sweep,
-        starcup1_sweep, 
+        starcup1_sweep,        
+        mirai_very_hard_sweep,
         hatsune_h_sweep,
         hatsune_dear_reading,
         smart_sweep,
-        mirai_very_hard_sweep,
         smart_hard_sweep,
         smart_shiori_sweep,
         last_normal_quest_sweep,
         lazy_normal_sweep,
 
-        all_in_hatsune,
+        last_hard_quest_sweep,
+        last_unlock_normal_quest_sweep,
 
+        all_in_hatsune,
+        
         hatsune_vhboss_sweep,
         hatsune_hboss_sweep,
         hatsune_mission_accept1,
@@ -121,6 +125,7 @@ daily_modules = ModuleList(
         master_shop,
 
         clan_equip_request,
+        clan_equip_donate,
         love_up,
         shiori_mission_check,
         main_story_reading,
@@ -209,6 +214,7 @@ tool_modules = ModuleList(
         ex_equip_rank_up,
         ex_equip_enhance_up,
         half_schedule,
+        set_my_party,
         caravan_play,
         caravan_shop_buy,
         clan_battle_knive,
@@ -220,5 +226,15 @@ tool_modules = ModuleList(
         remove_cb_ex_equip,
         remove_cb_support,
         redeem_unit_swap,
+
+        remove_normal_ex_equip,
+        calc_best_3star_ex_equip,
+        
+        jjc_back,
+        pjjc_back,
+        jjc_info,
+        pjjc_info,
+        pjjc_def_shuffle_team,
+        pjjc_atk_shuffle_team,
     ]
 )

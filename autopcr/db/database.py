@@ -1593,7 +1593,7 @@ class database():
         1: '铜',
         2: '银',
         3: '金',
-        4: '粉'
+        4: 'AAA粉'
     }
 
     @lazy_property

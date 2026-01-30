@@ -110,7 +110,7 @@ class free_gacha(Module):
         select_open_free_gacha_ids = open_free_gacha_ids & set(int(i) for i in free_gacha_select_ids)
         if not select_open_free_gacha_ids:
             raise AbortError(f"没有可抽取的卡池，请重新配置")
-        target_gacha_id = max(select_open_free_gacha_ids)
+        target_gacha_id = min(select_open_free_gacha_ids)
         
         for gacha_info in res.gacha_info:
             if gacha_info.id == target_gacha_id:
@@ -121,7 +121,7 @@ class free_gacha(Module):
 
         gacha_reward: GachaReward = GachaReward()
 
-        self._log(f"抽取卡池：{db.gacha_data[target_gacha.id].gacha_name}")
+        self._log(f"抽取卡池：{db.gacha_data[target_gacha.id].pick_up_chara_text}")
 
         while cnt > 0:
             gacha_reward += await client.exec_gacha_aware(target_gacha, 10, eGachaDrawType.Campaign10Shot, cnt, res.campaign_info.campaign_id, client.time, free_gacha_auto_select_pickup, pickup_min_first)

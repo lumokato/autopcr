@@ -48,7 +48,7 @@ class room_upper_all(Module):
 
 @description('先回赞，再随机点赞')
 @name('公会小屋点赞')
-@default(True)
+@default(False)
 class room_like_back(Module):
     async def do_task(self, client: pcrclient):
         await client.room_start()
@@ -87,6 +87,8 @@ class room_like_back(Module):
 class love_up(Module):
     async def do_task(self, client: pcrclient):
         for unit in client.data.unit_love_data.values():
+            if unit.chara_id == 1255:  # 跳过魔姬
+                continue
             unit_id = unit.chara_id * 100 + 1
             unit_name = db.get_unit_name(unit_id)
             love_level, total_love = db.max_total_love(client.data.unit[unit_id].unit_rarity)
