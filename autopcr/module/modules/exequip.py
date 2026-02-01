@@ -415,7 +415,73 @@ class remove_cb_ex_equip(Module):
         else:
             raise SkipError("所有会战EX装备均已撤下")
 
+## add: 撤下普通ex装
+@name('撤下普通EX装')
+@default(True)
+@description('')
+class remove_normal_ex_equip(Module):
+    async def do_task(self, client: pcrclient):
+        ex_cnt = 0
+        unit_cnt = 0
+        for unit_id in client.data.unit:
+            unit = client.data.unit[unit_id]
+            exchange_list = []
+            for ex_equip in unit.ex_equip_slot:
+                if ex_equip.serial_id != 0:
+                    exchange_list.append(ExtraEquipChangeSlot(slot=ex_equip.slot, serial_id=0))
+                    ex_cnt += 1
 
+            if exchange_list:
+                unit_cnt += 1
+                await client.unit_equip_ex([ExtraEquipChangeUnit(
+                        unit_id=unit_id, 
+                        ex_equip_slot=exchange_list,
+                        cb_ex_equip_slot=None)])
+        if ex_cnt:
+            self._log(f"撤下了{unit_cnt}个角色的{ex_cnt}个普通EX装备")
+        else:
+            raise SkipError("所有普通EX装备均已撤下")
+
+# add: 计算已有角色最佳3星ex装备
+# 每个角色有三个槽，通过unit_ex_equipment_slot、ex_equipment_data可以找到每个槽能够使用的多个装备，通过calc_unit_power计算装上ex装备增加的战力倒序，获取最佳3星ex，以及次佳与最佳的差值。目前的calc_unit_attribute只能获取到未添加ex装备的战力，如果装上ex装备，需要在白板unit_attribute上加上"ex_equipment_data"的对应max_xxx值（如果是100的倍数需要加上百分之几，如200就加2%，如果不是就直接加上原数字）。装备显示成名称。
+
+@name('计算最佳3星EX装备')
+@default(False)
+@description('计算已有角色每个槽位的最佳3星EX装备推荐')
+@booltype('simulate_auto_equip', '模拟装备', True)
+@booltype('auto_equip', '自动装备', False)
+class calc_best_3star_ex_equip(Module):
+    async def do_task(self, client: pcrclient):
+        from .exequip_helpers import (
+            ExEquipPowerCalculator,
+            ExEquipRecommender,
+            ExEquipInventoryManager,
+            ExEquipConstants
+        )
+        from .exequip_auto_equipper import ExEquipAutoEquipper
+
+        simulate_auto_equip: bool = self.get_config('simulate_auto_equip')
+        auto_equip: bool = self.get_config('auto_equip')
+
+        # 步骤1: 创建辅助对象
+        calculator = ExEquipPowerCalculator(client)
+        recommender = ExEquipRecommender(client, calculator)
+
+        # 步骤2: 计算推荐
+        recommendations = recommender.calculate_recommendations()
+
+        if not recommendations['unit_slot_recommendations']:
+            raise SkipError("没有找到可推荐的3星EX装备")
+
+        # 步骤3: 执行装备（新需求总是执行装备，不再有纯输出汇总的模式）
+        if auto_equip or simulate_auto_equip:
+            auto_equipper = ExEquipAutoEquipper(client, calculator, self)
+            await auto_equipper.execute(recommendations, auto_equip)
+        else:
+            # 如果两个都是False，仍然执行模拟模式
+            auto_equipper = ExEquipAutoEquipper(client, calculator, self)
+            await auto_equipper.execute(recommendations, False)
+    
 @name('EX装战力最高搭配')
 @default(True)
 @description('理论最优，执行装备将撤下所有EX装备，然后再进行最优搭配')

@@ -655,9 +655,9 @@ class SpecialDungeonEnterAreaResponse(responses.SpecialDungeonEnterAreaResponse)
 class DungeonResetResponse(responses.DungeonResetResponse):
     async def update(self, mgr: datamgr, request):
         mgr.dungeon_area_id = 0
-        type = self.dungeon_area[0].dungeon_type
+        
         for count in self.rest_challenge_count:
-            if count.dungeon_type == type:
+            if count.dungeon_type == 1:
                 mgr.dungeon_avaliable = count.count > 0
                 break
 

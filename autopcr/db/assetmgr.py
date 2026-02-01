@@ -57,7 +57,7 @@ class assetmgr:
         self.root = None
         self.registries: dict[str, content] = {}
 
-    res = 'https://l1-prod-patch-gzlj.bilibiligame.net/client_ob_771'
+    res = 'https://l3-prod-patch-gzlj.bilibiligame.net/client_ob_771'
 
     @property
     def manifest(self) -> str:

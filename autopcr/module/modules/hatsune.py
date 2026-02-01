@@ -58,7 +58,7 @@ class hatsune_h_sweep(Module):
         if not do_sweep: raise SkipError()
 
 @name('扫荡活动vh本boss')
-@default(True)
+@default(False)
 class hatsune_vhboss_sweep(Module):
     async def do_task(self, client: pcrclient):
         is_error = False
