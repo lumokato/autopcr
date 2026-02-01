@@ -41,7 +41,7 @@ class qsdkclient(sdkclient):
 
     @property
     def apiroot(self):
-        return 'https://l1-prod-uo-gs-gzlj.bilibiligame.net/'
+        return 'https://l3-prod-uo-gs-gzlj.bilibiligame.net/'
 
     @property
     def platform_id(self):
