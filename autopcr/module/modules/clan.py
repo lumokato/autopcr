@@ -5,7 +5,7 @@ from ...core.apiclient import apiclient
 from ...model.error import *
 from ...model.enums import *
 from ...db.database import db
-import random
+import secrets
 
 @description('看看你是否掉刀')
 @name("公会战刀数")
@@ -42,7 +42,7 @@ class clan_like(Module):
         info = clan.clan
         members = [(x.viewer_id, x.name) for x in info.members if x.viewer_id != client.viewer_id]
         if len(members) == 0: raise AbortError("nobody's home?")
-        rnd = random.choice(members)
+        rnd = secrets.choice(members)
         await client.clan_like(rnd[0])
         self._log(f"为【{rnd[1]}】点赞")
 
@@ -97,3 +97,21 @@ class clan_equip_request(Module):
             self._log(f"请求【{db.get_equip_name(equip_id)}】装备，缺口数量为{num}")
         else:
             raise AbortError("没有可请求的装备")
+
+
+@texttype("equip_user_list", "捐赠用户id列表", "")
+@description("写入可能的捐赠用户id")
+@name("装备捐赠")
+@conditional_execution2("battle_time_skip_equip", ["会战期间"], desc='会战期间跳过', check=False)
+@default(False)
+class clan_equip_donate(Module):
+    async def do_task(self, client: pcrclient):
+        equip_user_list = [int(x) for x in self.get_config('equip_user_list').strip().split(',')]
+        equip_req = await client.getrequests()
+        for req in equip_req:
+            if req.viewer_id in equip_user_list and req.donation_num < 10:
+                donate = await client.donate_equip(req, 2)
+                if donate:
+                    self._log(f"已捐赠给{req.viewer_id}装备{db.get_equip_name(req.equip_id)}")
+                else:
+                    self._log(f"{db.get_equip_name(req.equip_id)}装备不足")
