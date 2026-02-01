@@ -29,7 +29,7 @@ class assetmgr:
         self.registries: AssetRegistry = {}
         self._manifest_lock = asyncio.Lock()
 
-    res = 'https://l1-prod-patch-gzlj.bilibiligame.net/client_ob_771'
+    res = 'https://l3-prod-patch-gzlj.bilibiligame.net/client_ob_771'
 
     @property
     def manifest(self) -> str:
