@@ -561,5 +561,9 @@ data: {ret}\n\n'''
                 return await send_from_directory(str(self.web.static_folder), 'index.html')
 
     def run_forever(self, loop):
+        from quart import redirect
+        @self.quart.route('/')
+        async def root_redirect():
+            return redirect('/daily/account')
         self.quart.register_blueprint(self.app)
         self.quart.run(host=self.host, port=self.port, loop=loop)
