@@ -42,6 +42,12 @@ Compress(app)
 app.secret_key = secrets.token_urlsafe(16) # cookie expires when reboot
 app.register_blueprint(server.app)
 
+# Redirect root path to /daily/account
+from quart import redirect
+@app.route('/')
+async def root_redirect():
+    return redirect('/daily/account')
+
 prefix = '#'
 
 sv_help = f"""
