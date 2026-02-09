@@ -17,16 +17,14 @@
 
 services:
   app-autopcr:
-    build: 
-      context: .
-      dockerfile: Dockerfile
-    
+    build: .
+    image: app-autopcr:latest
     container_name: app-autopcr
     restart: unless-stopped
     
     volumes:
       - ${HOST_DATA_PATH}/cache:/app/cache
-      - ${HOST_DATA_PATH}/logs:/app/logs
+      - ${HOST_DATA_PATH}/log:/app/log
       - ${HOST_DATA_PATH}/result:/app/result  
     
     # 网络设置
