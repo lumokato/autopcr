@@ -25,7 +25,9 @@ services:
     restart: unless-stopped
     
     volumes:
-      - ${HOST_DATA_PATH}:/app
+      - ${HOST_DATA_PATH}/cache:/app/cache
+      - ${HOST_DATA_PATH}/logs:/app/logs
+      - ${HOST_DATA_PATH}/result:/app/result  
     
     # 网络设置
     networks:
