@@ -22,3 +22,5 @@ autopcr/http_server/client_version
 .vscode/
 
 .vscode/
+
+.env
