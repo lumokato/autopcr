@@ -558,7 +558,18 @@ data: {ret}\n\n'''
             if os.path.exists(os.path.join(str(self.web.static_folder), path)):
                 return await send_from_directory(str(self.web.static_folder), path, mimetype=("text/javascript" if path.endswith(".js") else None))
             else:
-                return await send_from_directory(str(self.web.static_folder), 'index.html')
+                index_path = os.path.join(str(self.web.static_folder), 'index.html')
+                with open(index_path, 'r', encoding='utf-8') as f:
+                    html = f.read()
+                
+                # 域名迁移通知 - 仅在旧域名显示，2026/02/13 后可删除此段代码
+                if 'auto.148877.xyz' in request.host:
+                    notice = '''<div style="background:linear-gradient(90deg,#d32f2f,#f44336);color:white;padding:14px 20px;text-align:center;font-size:15px;position:fixed;top:0;left:0;right:0;z-index:99999;box-shadow:0 2px 8px rgba(0,0,0,0.3);">
+⚠️ <b>域名迁移通知</b>：当前域名将于 <b>2026年2月13日</b> 失效，请尽快收藏新地址：<a href="https://autopcr.120224.xyz" style="color:#ffeb3b;text-decoration:underline;font-weight:bold;">https://autopcr.120224.xyz</a>
+</div><div style="height:48px;"></div>'''
+                    html = html.replace('<body>', '<body>' + notice, 1)
+                
+                return html, 200, {'Content-Type': 'text/html; charset=utf-8'}
 
     def run_forever(self, loop):
         from quart import redirect
