@@ -555,7 +555,8 @@ data: {ret}\n\n'''
         @self.web.route("/", defaults={"path": ""})
         @self.web.route("/<path:path>")
         async def index(path):
-            if os.path.exists(os.path.join(str(self.web.static_folder), path)):
+            file_path = os.path.join(str(self.web.static_folder), path)
+            if os.path.isfile(file_path) and path != 'index.html':
                 return await send_from_directory(str(self.web.static_folder), path, mimetype=("text/javascript" if path.endswith(".js") else None))
             else:
                 index_path = os.path.join(str(self.web.static_folder), 'index.html')
