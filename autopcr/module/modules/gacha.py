@@ -110,7 +110,7 @@ class free_gacha(Module):
         select_open_free_gacha_ids = open_free_gacha_ids & set(int(i) for i in free_gacha_select_ids)
         if not select_open_free_gacha_ids:
             raise AbortError(f"没有可抽取的卡池，请重新配置")
-        target_gacha_id = min(select_open_free_gacha_ids)
+        target_gacha_id = max(select_open_free_gacha_ids)
         
         for gacha_info in res.gacha_info:
             if gacha_info.id == target_gacha_id:
