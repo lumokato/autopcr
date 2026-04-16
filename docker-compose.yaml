@@ -1,3 +1,5 @@
+x-app-version: &app_version "2026.04.17.1"
+
 # ==============================================================================
 # 项目: AutoPCR (GitOps 部署版)
 # ==============================================================================
@@ -9,6 +11,9 @@
 #   - DOMAIN_NAME:     服务域名
 #   - NETWORK_NAME:    Traefik所在的网络名
 #   - HOST_DATA_PATH:  宿主机数据挂载根目录
+# 版本触发:
+#   - 修改 x-app-version 可触发 GitOps 感知配置变更
+#   - 建议格式: YYYY.MM.DD.N，例如 2026.04.17.1
 #
 # 端口说明:
 #   - 容器内部暴露: 13200
@@ -33,11 +38,12 @@ services:
     
     # Traefik 标签配置
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.autopcr.rule=Host(`${DOMAIN_NAME}`)" 
-      - "traefik.http.routers.autopcr.entrypoints=websecure"
-      - "traefik.http.routers.autopcr.tls.certresolver=letsencrypt"
-      - "traefik.http.services.autopcr.loadbalancer.server.port=13200"
+      traefik.enable: "true"
+      traefik.http.routers.autopcr.rule: Host(`${DOMAIN_NAME}`)
+      traefik.http.routers.autopcr.entrypoints: websecure
+      traefik.http.routers.autopcr.tls.certresolver: letsencrypt
+      traefik.http.services.autopcr.loadbalancer.server.port: "13200"
+      gitops.revision: *app_version
 
 networks:
   traefik_net:
