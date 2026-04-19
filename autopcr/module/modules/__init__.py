@@ -9,6 +9,7 @@ from .clan import *
 from .cron import *
 from .daily import *
 from .exequip import *
+from .exequip_cleanup import *
 from .gacha import *
 from .hatsune import *
 from .labyrinth import *
@@ -210,6 +211,7 @@ tool_modules = ModuleList(
     [
         labyrinth_start_reroll,
         ex_equip_rainbow_enchance,
+        ex_equip_cleanup_execute,
         ex_equip_power_maximun,
         set_my_party2,
         find_talent_quest,
