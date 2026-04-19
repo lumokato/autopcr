@@ -171,6 +171,11 @@ class pcrclient(apiclient):
         req.consume_ex_serial_id_list = consume_ex_serial_id_list
         return await self.request(req)
 
+    async def equipment_protect_ex(self, protection_list: List[ExtraEquipProtectInfo]):
+        req = EquipmentProtectExRequest()
+        req.protection_list = protection_list
+        return await self.request(req)
+
     async def caravan_top(self):
         req = CaravanTopRequest()
         req.is_first = 1
