@@ -75,6 +75,22 @@ class ExEquipPowerCalculator:
         frac = 0 if level <= 0 else (1.0 if level >= 5 else level / 5.0)
         return self.calculate_power_increase_at_fraction(unit_id, slot_index, ex_id, frac)
     
+    def calculate_power_increase_at_current_state(self, unit_id: int, slot_index: int, ex_id: int, enhancement_pt: int, rank: int) -> int:
+        unit = self.client.data.unit[unit_id]
+        base_attr = db.calc_unit_attribute(
+            unit,
+            self.client.data.read_story_ids,
+            self.client.data.ex_equips,
+            exclude_ex_equip=True,
+        )
+        level = min(
+            db.get_ex_equip_star_from_pt(ex_id, enhancement_pt),
+            db.get_ex_equip_max_star(ex_id, rank),
+        )
+        attr = db.ex_equipment_data[ex_id].get_unit_attribute(level)
+        bonus = base_attr.ex_equipment_mul(attr).ceil()
+        return int(bonus.get_power(self.coeff) + 0.5)
+
     def calculate_power_increase_at_fraction(self, unit_id: int, slot_index: int, ex_id: int, frac: float) -> int:
         """
         按分数计算战力提升（支持线性插值）
@@ -89,7 +105,12 @@ class ExEquipPowerCalculator:
             战力提升值
         """
         unit = self.client.data.unit[unit_id]
-        base_attr = db.calc_unit_attribute(unit, self.client.data.read_story_ids)
+        base_attr = db.calc_unit_attribute(
+            unit,
+            self.client.data.read_story_ids,
+            self.client.data.ex_equips,
+            exclude_ex_equip=True,
+        )
         ex_data = db.ex_equipment_data[ex_id]
         
         # 计算基础战力
@@ -246,7 +267,7 @@ class ExEquipInventoryManager:
         """
         return inst.enhancement_pt < ExEquipConstants.ENHANCEMENT_PT_MAX or inst.rank < ExEquipConstants.RANK_MAX
 
-    def build_slot_category_pools(self, unit_slot_recommendations: dict):
+    def build_slot_category_pools(self, unit_slot_recommendations: dict, mode: str = '重配未锁定'):
         """
         构建按槽位/类别组织的库存池（新方法）
 
@@ -256,17 +277,23 @@ class ExEquipInventoryManager:
         Returns:
             None (结果存储在 self.slot_category_pool 和 self.locked_slots 中)
         """
-        # 步骤1: 统计锁定的槽位
+        # 步骤1: 统计需要保留的槽位
         self.locked_slots = {}
         for unit_id, unit in self.client.data.unit.items():
             for slot_idx in range(3):
                 ex_slot = unit.ex_equip_slot[slot_idx]
                 if ex_slot.serial_id != 0:
                     ex = self.client.data.ex_equips.get(ex_slot.serial_id)
-                    # if ex and ex.protection_flag == ExEquipConstants.PROTECTION_LOCKED:
-                    rarity = db.get_ex_equip_rarity(ex.ex_equipment_id)
-                    if rarity == ExEquipConstants.RARITY_PINK:
-                        # 锁定的装备
+                    if not ex:
+                        continue
+                    should_lock_slot = (
+                        mode == '仅补空槽'
+                        or (mode != '撤下全部' and (
+                            ex.protection_flag == ExEquipConstants.PROTECTION_LOCKED
+                            or db.get_ex_equip_rarity(ex.ex_equipment_id) >= ExEquipConstants.RARITY_PINK
+                        ))
+                    )
+                    if should_lock_slot:
                         self.locked_slots[(unit_id, slot_idx + 1)] = ex_slot.serial_id
 
         # 步骤2: 收集需要的(slot, category)组合
@@ -453,6 +480,12 @@ class ExEquipRecommender:
         total_best_power_increase = 0
         
         for unit_id in self.client.data.unit:
+            unit = self.client.data.unit[unit_id]
+            try:
+                if int(unit.promotion_level) <= 1:
+                    continue
+            except Exception:
+                pass
             # 计算每个槽位的最佳EX装备（只处理普通EX槽位1-3）
             for slot in range(3):
                 slot_index = slot + 1
@@ -501,13 +534,24 @@ class ExEquipRecommender:
             power = self.calculator.calculate_power_increase_at_level(unit_id, slot_index, ex_id, ExEquipConstants.ENHANCE_LEVEL_MAX)
             equip_powers_5rank2.append((ex_id, int(power)))
 
-        # 按战力降序排序
-        equip_powers_5rank2.sort(key=lambda x: x[1], reverse=True)
+        # 按战力降序排序；同战力时优先普通金，避免无谓消耗会战装
+        equip_powers_5rank2.sort(
+            key=lambda x: (
+                -x[1],
+                1 if db.is_clan_ex_equip((eInventoryType.ExtraEquip, x[0])) else 0,
+                x[0],
+            )
+        )
 
-        # 找出最佳装备（可能有多个并列）
+        # 全类型最优仅用于展示/粉装覆盖判断；金装需求本身仍按金装内部最优计算
         max_power = equip_powers_5rank2[0][1]
-        best_equips = [(ex_id, power) for ex_id, power in equip_powers_5rank2 if power == max_power]
-        chosen_best = best_equips[0][0]  # 任选一个
+        chosen_best = equip_powers_5rank2[0][0]
+        gold_like_powers = [
+            (ex_id, power) for ex_id, power in equip_powers_5rank2
+            if db.get_ex_equip_rarity(ex_id) == ExEquipConstants.RARITY_GOLD
+        ]
+        gold_best_power = gold_like_powers[0][1]
+        best_equips = [(ex_id, power) for ex_id, power in gold_like_powers if power == gold_best_power]
 
         # 计算最佳装备在不同强化等级的战力
         best_power_5rank2 = max_power
@@ -520,8 +564,8 @@ class ExEquipRecommender:
         alt_level1 = []  # 1级替代：满强非最佳 > 4强最佳
         alt_level2 = []  # 2级替代：4强最佳 > 满强非最佳 > 3强最佳
 
-        for ex_id, power_5rank2 in equip_powers_5rank2:
-            if power_5rank2 == max_power:  # 跳过最佳装备
+        for ex_id, power_5rank2 in gold_like_powers:
+            if power_5rank2 == gold_best_power:
                 continue
 
             if power_5rank2 > best_power_4rank1:
@@ -539,5 +583,6 @@ class ExEquipRecommender:
             'best_power_3rank0': best_power_3rank0,
             'alt_level1': alt_level1,
             'alt_level2': alt_level2,
+            'all_equips': gold_like_powers,
         }
     
