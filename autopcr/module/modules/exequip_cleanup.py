@@ -5,7 +5,7 @@ from ..config import *
 from ...core.pcrclient import pcrclient
 from ...model.error import *
 from ...model.common import ExtraEquipChangeSlot, ExtraEquipChangeUnit, ExtraEquipProtectInfo, InventoryInfoPost
-from .exequip_cleanup_analyzer import ExEquipCleanupAnalyzer, summarize_retention_totals, summarize_full_totals
+from .exequip_cleanup_analyzer import ExEquipCleanupAnalyzer
 
 
 def _is_force_locked(ex_id: int) -> bool:
@@ -151,16 +151,25 @@ async def _recycle_excess(client: pcrclient, ex_id: int, keep_total: int, full_t
 
 
 def _log_report_summary(module: Module, report, title: str):
-    totals = summarize_retention_totals(report.slot_reports)
-    full_totals = summarize_full_totals(report.slot_reports)
-    actual_total = sum(eq.current_total for slot in report.slot_reports for eq in slot.equip_reports)
-    actual_full = sum(eq.current_full_r2 for slot in report.slot_reports for eq in slot.equip_reports)
+    slot_totals = defaultdict(int)
+    slot_full_totals = defaultdict(int)
+    actual_total = 0
+    actual_full = 0
+    for slot_report in report.slot_reports:
+        slot_total = 0
+        slot_full = 0
+        for eq in slot_report.equip_reports:
+            slot_total += eq.current_total
+            slot_full += eq.current_full_r2
+        slot_totals[slot_report.slot_index] += slot_total
+        slot_full_totals[slot_report.slot_index] += slot_full
+        actual_total += slot_total
+        actual_full += slot_full
     module._log(title)
     module._log(f"当前实际EX总数: {actual_total} / 当前满强总数: {actual_full}")
-    module._log(f"槽位1总保留数: {totals['slot_totals'].get(1, 0)} / 满强目标总数: {full_totals.get(1, 0)}")
-    module._log(f"槽位2总保留数: {totals['slot_totals'].get(2, 0)} / 满强目标总数: {full_totals.get(2, 0)}")
-    module._log(f"槽位3总保留数: {totals['slot_totals'].get(3, 0)} / 满强目标总数: {full_totals.get(3, 0)}")
-    module._log(f"总计保留数: {totals['grand_total']} / 总计满强目标: {sum(full_totals.values())}")
+    module._log(f"槽位1实际EX总数: {slot_totals.get(1, 0)} / 实际满强总数: {slot_full_totals.get(1, 0)}")
+    module._log(f"槽位2实际EX总数: {slot_totals.get(2, 0)} / 实际满强总数: {slot_full_totals.get(2, 0)}")
+    module._log(f"槽位3实际EX总数: {slot_totals.get(3, 0)} / 实际满强总数: {slot_full_totals.get(3, 0)}")
 
 
 def _build_detail_rows(report):
