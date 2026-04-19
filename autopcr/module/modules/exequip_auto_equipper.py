@@ -29,7 +29,7 @@ class ExEquipAutoEquipper:
         self.unequipped_units = 0
         self.inventory_snapshots = {}  # 保存分配前的库存快照
 
-    async def execute(self, recommendations: dict, auto_equip: bool):
+    async def execute(self, recommendations: dict, auto_equip: bool, mode: str = '重配未锁定'):
         """
         执行自动装备流程
 
@@ -39,11 +39,11 @@ class ExEquipAutoEquipper:
         """
         unit_slot_recommendations = recommendations['unit_slot_recommendations']
 
-        # 步骤1: 撤下未锁定的非粉装
-        await self._unequip_unlocked_equipment(auto_equip)
+        # 步骤1: 根据模式准备当前装备状态
+        await self._unequip_unlocked_equipment(auto_equip, mode)
 
         # 步骤2: 构建库存池
-        self.inventory_mgr.build_slot_category_pools(unit_slot_recommendations)
+        self.inventory_mgr.build_slot_category_pools(unit_slot_recommendations, mode)
 
         # 步骤2.5: 保存分配前的库存快照
         self._save_inventory_snapshots()
@@ -71,13 +71,19 @@ class ExEquipAutoEquipper:
                     'rank0_full': sum(1 for item in ranks['rank0'] if item['pt'] >= ExEquipConstants.ENHANCEMENT_PT_MAX),
                 }
 
-    async def _unequip_unlocked_equipment(self, auto_equip: bool):
+    async def _unequip_unlocked_equipment(self, auto_equip: bool, mode: str):
         """
-        撤下所有未锁定的非粉装EX装备
+        按模式准备装备状态
 
         Args:
             auto_equip: 是否实际执行（False为模拟）
         """
+        if mode == '仅补空槽':
+            occupied_slots = sum(1 for unit in self.client.data.unit.values() for ex_slot in unit.ex_equip_slot if ex_slot.serial_id != 0)
+            if occupied_slots:
+                self.module._log(f"保留当前已穿EX，仅为{occupied_slots}个已占用槽位之外的空槽补装")
+            return
+
         removed_cnt = 0
         removed_units = 0
 
@@ -93,8 +99,8 @@ class ExEquipAutoEquipper:
                     continue
 
                 rarity = db.get_ex_equip_rarity(ex.ex_equipment_id)
-                # if ex.protection_flag == ExEquipConstants.PROTECTION_UNLOCKED and rarity < ExEquipConstants.RARITY_PINK:
-                if rarity < ExEquipConstants.RARITY_PINK:
+                should_remove = mode == '撤下全部' or (rarity < ExEquipConstants.RARITY_PINK and ex.protection_flag != ExEquipConstants.PROTECTION_LOCKED)
+                if should_remove:
                     exchange.append(ExtraEquipChangeSlot(slot=slot + 1, serial_id=0))
 
             if exchange:
@@ -109,10 +115,11 @@ class ExEquipAutoEquipper:
         self.unequipped_units = removed_units
 
         if removed_cnt:
+            action_desc = '全部EX' if mode == '撤下全部' else '未锁定的非粉装EX'
             if auto_equip:
-                self.module._log(f"已撤下未锁定的非粉装EX：{removed_units}个角色，共{removed_cnt}件")
+                self.module._log(f"已撤下{action_desc}：{removed_units}个角色，共{removed_cnt}件")
             else:
-                self.module._log(f"将撤下未锁定的非粉装EX：{removed_units}个角色，共{removed_cnt}件")
+                self.module._log(f"将撤下{action_desc}：{removed_units}个角色，共{removed_cnt}件")
 
         # 统计锁定的装备
         locked_count = len(self.inventory_mgr.locked_slots)
@@ -636,13 +643,44 @@ class ExEquipAutoEquipper:
 
     def _output_report(self, auto_equip: bool):
         """输出装备分配报告"""
+        if self.module.__class__.__name__ == 'ex_equip_power_maximun':
+            total_power = sum(
+                self.calculator.calculate_power_increase_at_current_state(
+                    unit_id,
+                    slot,
+                    alloc['ex_id'],
+                    alloc['pt'],
+                    alloc['rank'],
+                )
+                for (unit_id, slot), alloc in self.allocation_results.items()
+            )
+            self.module._log(f"最大战力提升：{total_power}")
+
         if auto_equip:
             self.module._log(f"\n已为{len(set(uid for uid, _ in self.allocation_results.keys()))}个角色装备了{len(self.allocation_results)}件EX装备")
         else:
             self.module._log(f"\n模拟为{len(set(uid for uid, _ in self.allocation_results.keys()))}个角色装备{len(self.allocation_results)}件EX装备")
 
-        # 按槽位/类别输出详细报告
-        self._output_detailed_report(auto_equip)
+        if self.module.__class__.__name__ == 'ex_equip_power_maximun':
+            self._output_legacy_report()
+        else:
+            # 按槽位/类别输出详细报告
+            self._output_detailed_report(auto_equip)
+
+    def _output_legacy_report(self):
+        """按旧风格输出：每个角色一行，直观看装备结果"""
+        by_unit = defaultdict(list)
+        for (unit_id, slot), alloc in self.allocation_results.items():
+            by_unit[unit_id].append((slot, alloc))
+
+        for unit_id in sorted(by_unit):
+            msg = []
+            for _, alloc in sorted(by_unit[unit_id], key=lambda x: x[0]):
+                ex_name = db.get_ex_equip_name(alloc['ex_id'])
+                star = db.get_ex_equip_star_from_pt(alloc['ex_id'], alloc['pt'])
+                msg.append(f"{ex_name}{star}")
+            if msg:
+                self.module._log(f"{db.get_unit_name(unit_id)} 装备 {','.join(msg)}")
 
     def _output_detailed_report(self, auto_equip: bool):
         """输出详细的分配报告"""
