@@ -11,6 +11,8 @@ async def run_sync_func(func, *args, **kwargs) -> Any:
         None, partial(func, *args, **kwargs))
 
 _global_session = Session()
+# Ignore process-level proxy env vars so local tun/clash settings do not hijack game traffic.
+_global_session.trust_env = False
 
 class AsyncResponse:
     def __init__(self, response: requests.Response):
