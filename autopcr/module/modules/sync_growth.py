@@ -4,6 +4,7 @@ from typing import List, Tuple
 
 from ...core.pcrclient import pcrclient
 from ...db.database import db
+from ...model.common import SkillLevelUpDetail
 from ...model.enums import eInventoryType
 from ...model.error import AbortError
 from ..config import *
@@ -104,16 +105,11 @@ class SyncGrowthController(UnitController):
             stage += 1
         return RankStage(rank, stage)
 
-    def _current_sync_limits(self) -> Tuple[int, int]:
-        limit = self.client.data.get_synchro_parameter()
-        return int(limit.unit_level or 0), int(limit.skill_level or 0)
-
     def _unit_level_skill_targets(self, unit_id: int) -> Tuple[int, int]:
         unit = self.client.data.unit[unit_id]
-        sync_level_limit, sync_skill_limit = self._current_sync_limits()
         unit_level_limit = self.client.data.team_level + (10 if unit.exceed_stage else 0)
-        level_target = min(sync_level_limit, unit_level_limit)
-        skill_target = min(sync_skill_limit, level_target)
+        level_target = unit_level_limit
+        skill_target = level_target
         return level_target, skill_target
 
     def _is_unit_equip_synced(self, unit_id: int, state: RankStage) -> bool:
@@ -137,6 +133,45 @@ class SyncGrowthController(UnitController):
 
     def _is_unit_synced_to_limits(self, unit_id: int, state: RankStage) -> bool:
         return self._is_unit_equip_synced(unit_id, state) and self._is_unit_level_skill_synced(unit_id)
+
+    async def _sync_level_and_skills(self, unit_id: int):
+        self.unit_id = unit_id
+        level_target, skill_target = self._unit_level_skill_targets(unit_id)
+        unit = self.unit
+
+        level_changed = False
+        if unit.unit_level < level_target:
+            await self.unit_level_up_aware(level_target)
+            level_changed = True
+
+        skill_levelup_list: List[SkillLevelUpDetail] = []
+        skill_sources = [
+            (eSkillLocationCategory.UNION_BURST_SKILL, unit.union_burst[0] if unit.union_burst else None),
+            (eSkillLocationCategory.MAIN_SKILL_1, unit.main_skill[0] if unit.main_skill else None),
+            (eSkillLocationCategory.MAIN_SKILL_2, unit.main_skill[1] if len(unit.main_skill) > 1 else None),
+            (eSkillLocationCategory.EX_SKILL_1, unit.ex_skill[0] if unit.ex_skill else None),
+        ]
+        for location, skill in skill_sources:
+            if skill is None or skill.skill_level >= skill_target:
+                continue
+            skill_levelup_list.append(
+                SkillLevelUpDetail(
+                    location=location,
+                    step=skill_target - skill.skill_level,
+                    current_level=skill.skill_level,
+                )
+            )
+
+        if skill_levelup_list:
+            total_mana = sum(
+                db.get_skill_up_cost(detail.current_level, detail.current_level + detail.step)
+                for detail in skill_levelup_list
+            )
+            if not await self.client.prepare_mana(total_mana):
+                raise AbortError(f"{self.unit_name}技能升至{skill_target}级需要{total_mana}玛娜，当前玛娜不足")
+            await self.client.skill_level_up(self.unit.id, skill_levelup_list)
+
+        return level_changed or bool(skill_levelup_list)
 
     def _probe_unit_id(self) -> int:
         candidates = self._candidate_unit_ids()
@@ -418,22 +453,8 @@ class SyncGrowthController(UnitController):
     async def _reach_state(self, target: RankStage, free_only: bool = False):
         while True:
             current = self._snapshot_state(self.unit_id, self._build_actual_snapshot(self.unit_id))
-            level_target, skill_target = self._unit_level_skill_targets(self.unit_id)
             if self._state_ge(current, target):
-                if self.unit.unit_level < level_target:
-                    await self.unit_level_up_aware(level_target)
-                    continue
-                if self.unit.union_burst and self.unit.union_burst[0].skill_level < skill_target:
-                    await self.unit_skill_up_aware(eSkillLocationCategory.UNION_BURST_SKILL, lambda: self.unit.union_burst[0], skill_target)
-                    continue
-                if self.unit.main_skill and self.unit.main_skill[0].skill_level < skill_target:
-                    await self.unit_skill_up_aware(eSkillLocationCategory.MAIN_SKILL_1, lambda: self.unit.main_skill[0], skill_target)
-                    continue
-                if len(self.unit.main_skill) > 1 and self.unit.main_skill[1].skill_level < skill_target:
-                    await self.unit_skill_up_aware(eSkillLocationCategory.MAIN_SKILL_2, lambda: self.unit.main_skill[1], skill_target)
-                    continue
-                if self.unit.ex_skill and self.unit.ex_skill[0].skill_level < skill_target:
-                    await self.unit_skill_up_aware(eSkillLocationCategory.EX_SKILL_1, lambda: self.unit.ex_skill[0], skill_target)
+                if await self._sync_level_and_skills(self.unit_id):
                     continue
                 return
 
@@ -536,6 +557,7 @@ class sync_growth(SyncGrowthController):
             self.unit_id = unit_id
             try:
                 await self._reach_state(target, free_only=True)
+                self._log(f"{self.unit_name} 免费拉满")
             except Exception as e:
                 self._warn(f"{self.unit_name} 免费同步到 {self._format_state(target)} 失败: {e}")
 
