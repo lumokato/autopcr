@@ -104,6 +104,40 @@ class SyncGrowthController(UnitController):
             stage += 1
         return RankStage(rank, stage)
 
+    def _current_sync_limits(self) -> Tuple[int, int]:
+        limit = self.client.data.get_synchro_parameter()
+        return int(limit.unit_level or 0), int(limit.skill_level or 0)
+
+    def _unit_level_skill_targets(self, unit_id: int) -> Tuple[int, int]:
+        unit = self.client.data.unit[unit_id]
+        sync_level_limit, sync_skill_limit = self._current_sync_limits()
+        unit_level_limit = self.client.data.team_level + (10 if unit.exceed_stage else 0)
+        level_target = min(sync_level_limit, unit_level_limit)
+        skill_target = min(sync_skill_limit, level_target)
+        return level_target, skill_target
+
+    def _is_unit_equip_synced(self, unit_id: int, state: RankStage) -> bool:
+        snapshot = self._build_actual_snapshot(unit_id)
+        return self._state_ge(self._snapshot_state(unit_id, snapshot), state)
+
+    def _is_unit_level_skill_synced(self, unit_id: int) -> bool:
+        unit = self.client.data.unit[unit_id]
+        level_target, skill_target = self._unit_level_skill_targets(unit_id)
+        if unit.unit_level < level_target:
+            return False
+        if unit.union_burst and unit.union_burst[0].skill_level < skill_target:
+            return False
+        if unit.main_skill and unit.main_skill[0].skill_level < skill_target:
+            return False
+        if len(unit.main_skill) > 1 and unit.main_skill[1].skill_level < skill_target:
+            return False
+        if unit.ex_skill and unit.ex_skill[0].skill_level < skill_target:
+            return False
+        return True
+
+    def _is_unit_synced_to_limits(self, unit_id: int, state: RankStage) -> bool:
+        return self._is_unit_equip_synced(unit_id, state) and self._is_unit_level_skill_synced(unit_id)
+
     def _probe_unit_id(self) -> int:
         candidates = self._candidate_unit_ids()
         if not candidates:
@@ -384,7 +418,23 @@ class SyncGrowthController(UnitController):
     async def _reach_state(self, target: RankStage, free_only: bool = False):
         while True:
             current = self._snapshot_state(self.unit_id, self._build_actual_snapshot(self.unit_id))
+            level_target, skill_target = self._unit_level_skill_targets(self.unit_id)
             if self._state_ge(current, target):
+                if self.unit.unit_level < level_target:
+                    await self.unit_level_up_aware(level_target)
+                    continue
+                if self.unit.union_burst and self.unit.union_burst[0].skill_level < skill_target:
+                    await self.unit_skill_up_aware(eSkillLocationCategory.UNION_BURST_SKILL, lambda: self.unit.union_burst[0], skill_target)
+                    continue
+                if self.unit.main_skill and self.unit.main_skill[0].skill_level < skill_target:
+                    await self.unit_skill_up_aware(eSkillLocationCategory.MAIN_SKILL_1, lambda: self.unit.main_skill[0], skill_target)
+                    continue
+                if len(self.unit.main_skill) > 1 and self.unit.main_skill[1].skill_level < skill_target:
+                    await self.unit_skill_up_aware(eSkillLocationCategory.MAIN_SKILL_2, lambda: self.unit.main_skill[1], skill_target)
+                    continue
+                if self.unit.ex_skill and self.unit.ex_skill[0].skill_level < skill_target:
+                    await self.unit_skill_up_aware(eSkillLocationCategory.EX_SKILL_1, lambda: self.unit.ex_skill[0], skill_target)
+                    continue
                 return
 
             if current.rank < target.rank and current.stage >= self._global_stage_cap(current.rank):
@@ -454,11 +504,24 @@ class SyncGrowthController(UnitController):
 @default(False)
 class sync_growth(SyncGrowthController):
 
+    def _pending_paid_level_sync_unit_ids(self) -> List[int]:
+        return sorted(
+            [
+                unit_id
+                for unit_id in self._candidate_unit_ids()
+                if self.client.data.unit[unit_id].exceed_stage and not self._is_unit_level_skill_synced(unit_id)
+            ],
+            key=lambda unit_id: (
+                self.client.data.unit[unit_id].unit_level,
+                unit_id,
+            ),
+        )
+
     def _pending_free_sync_unit_ids(self, target: RankStage) -> List[int]:
         return [
             unit_id
             for unit_id in self._candidate_unit_ids()
-            if not self._state_ge(self._snapshot_state(unit_id, self._build_actual_snapshot(unit_id)), target)
+            if not self._is_unit_synced_to_limits(unit_id, target)
         ]
 
     async def _free_sync_remaining(self, target: RankStage, pending: List[int] | None = None):
@@ -486,7 +549,7 @@ class sync_growth(SyncGrowthController):
             for cost in step.selected:
                 self.unit_id = cost.unit_id
                 try:
-                    if not self._state_ge(self._snapshot_state(self.unit_id, self._build_actual_snapshot(self.unit_id)), sync_state):
+                    if not self._is_unit_synced_to_limits(self.unit_id, sync_state):
                         await self._reach_state(sync_state, free_only=True)
                     await self._reach_state(step.target, free_only=False)
                     self._log(f"{self.unit_name} 提升到 {self._format_state(step.target)}")
@@ -507,11 +570,28 @@ class sync_growth(SyncGrowthController):
         self._log_plan(start, target, steps)
 
         if not steps:
+            equip_pending = sum(
+                1 for unit_id in self._candidate_unit_ids()
+                if not self._is_unit_equip_synced(unit_id, target)
+            )
+            level_pending = sum(
+                1 for unit_id in self._candidate_unit_ids()
+                if not self._is_unit_level_skill_synced(unit_id)
+            )
             pending = self._pending_free_sync_unit_ids(target)
-            self._log(f"需免费同步角色：{len(pending)} 人")
+            self._log(f"未拉满装备角色：{equip_pending} 人")
+            self._log(f"未拉满等级角色：{level_pending} 人")
 
         if self.get_config("sync_growth_do_execute"):
             if not steps:
+                paid_units = self._pending_paid_level_sync_unit_ids()[:SYNC_ANCHOR_COUNT]
+                for unit_id in paid_units:
+                    self.unit_id = unit_id
+                    try:
+                        await self._reach_state(target, free_only=False)
+                        self._log(f"{self.unit_name} 正式拉满")
+                    except Exception as e:
+                        self._warn(f"{self.unit_name} 正式拉满失败: {e}")
                 await self._free_sync_remaining(target, pending)
                 return
             await self._execute_steps(steps)
