@@ -22,6 +22,7 @@ from .tower import *
 from .tools import *
 from .travel import *
 from .unit import *
+from .sync_growth import *
 from .talent import *
 from .mirage import *
 
@@ -175,6 +176,8 @@ unit_modules = ModuleList(
         missing_unit,
         refresh_box,
         unit_promote,
+        sync_growth,
+        sync_growth_underground_shop,
         unit_memory_buy,
         unit_set_unique_equip_growth,
         unit_exceed,
