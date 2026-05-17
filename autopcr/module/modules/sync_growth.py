@@ -64,6 +64,8 @@ class StagePlan:
     selected: List[StepCost]
     latest_consumption: Counter
     latest_shortage: Counter
+    candidate_consumption: Counter
+    candidate_shortage: Counter
     mana: int
     stone_pt: int
     feasible_count: int
@@ -373,6 +375,23 @@ class SyncGrowthController(UnitController):
             cost.stone_pt,
         )
 
+    def _candidate_stage_consumption(self, costs: List[StepCost]) -> Counter:
+        anchor_slots = min(SYNC_ANCHOR_COUNT, len(costs))
+        free_slots = sum(1 for cost in costs if not cost.latest_demand)
+        paid_slots = max(0, anchor_slots - min(anchor_slots, free_slots))
+        if paid_slots == 0:
+            return Counter()
+
+        grouped = {}
+        for cost in costs:
+            for item, count in cost.latest_demand.items():
+                grouped.setdefault(item, []).append(count)
+
+        consumption = Counter()
+        for item, counts in grouped.items():
+            consumption[item] = sum(sorted(counts, reverse=True)[:paid_slots])
+        return consumption
+
     def _plan_steps(self, start: RankStage, target: RankStage) -> List[StagePlan]:
         remaining = Counter(self.client.data.inventory)
         remaining_mana = self.client.data.get_mana()
@@ -408,6 +427,8 @@ class SyncGrowthController(UnitController):
                     cost.unit_id,
                 )
             )
+            candidate_consumption = self._candidate_stage_consumption(feasible)
+            candidate_shortage = self._latest_shortage(candidate_consumption, remaining)
 
             selected: List[StepCost] = []
             stage_remaining = remaining.copy()
@@ -438,6 +459,8 @@ class SyncGrowthController(UnitController):
                 selected=selected,
                 latest_consumption=stage_consumption,
                 latest_shortage=stage_shortage,
+                candidate_consumption=candidate_consumption,
+                candidate_shortage=candidate_shortage,
                 mana=stage_mana,
                 stone_pt=stage_stone_pt,
                 feasible_count=len(feasible),
@@ -449,6 +472,23 @@ class SyncGrowthController(UnitController):
             current = step_target
 
         return steps
+
+    def _format_counter_detail(self, consumption: Counter, shortage: Counter) -> str:
+        keys = []
+        seen = set()
+        for item in consumption:
+            if item not in seen:
+                seen.add(item)
+                keys.append(item)
+        for item in shortage:
+            if item not in seen:
+                seen.add(item)
+                keys.append(item)
+
+        return "，".join(
+            f"{db.get_inventory_name_san(item)}{consumption.get(item, 0)}（{shortage.get(item, 0)}）"
+            for item in keys
+        )
 
     async def _reach_state(self, target: RankStage, free_only: bool = False):
         while True:
@@ -491,23 +531,14 @@ class SyncGrowthController(UnitController):
             self._log("")
             self._log(f"阶段 {self._format_state(step.target)}")
 
-            keys = []
-            seen = set()
-            for item in step.latest_consumption:
-                if item not in seen:
-                    seen.add(item)
-                    keys.append(item)
-            for item in step.latest_shortage:
-                if item not in seen:
-                    seen.add(item)
-                    keys.append(item)
-
-            if keys:
-                detail = "，".join(
-                    f"{db.get_inventory_name_san(item)}{step.latest_consumption.get(item, 0)}（{step.latest_shortage.get(item, 0)}）"
-                    for item in keys
-                )
+            if step.candidate_consumption or step.candidate_shortage:
+                detail = self._format_counter_detail(step.candidate_consumption, step.candidate_shortage)
                 self._log(f"碎片总消耗（缺口）：{detail}")
+
+            if step.latest_consumption != step.candidate_consumption:
+                detail = self._format_counter_detail(step.latest_consumption, step.latest_shortage)
+                if detail:
+                    self._log(f"锚点碎片消耗（缺口）：{detail}")
 
             if step.selected:
                 names = "，".join(db.get_unit_name(cost.unit_id) for cost in step.selected)
