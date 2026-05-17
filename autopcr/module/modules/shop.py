@@ -192,7 +192,7 @@ class sync_growth_shop_buyer(shop_buyer):
         _, _, steps = build_sync_growth_plan(client)
         demand = Counter()
         for step in steps:
-            demand += step.latest_consumption
+            demand += step.candidate_consumption
 
         item_target = Counter()
         category_target = Counter()
