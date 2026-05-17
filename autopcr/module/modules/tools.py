@@ -1038,7 +1038,7 @@ class get_normal_quest_recommand(Module):
         _, _, steps = build_sync_growth_plan(client)
         require_equip = Counter()
         for step in steps:
-            require_equip += step.latest_shortage
+            require_equip += step.candidate_shortage
         quest_weight = client.data.get_quest_weght(require_equip)
         quest_id = sorted(quest_list, key = lambda x: quest_weight[x], reverse = True)
         tot = []
