@@ -64,12 +64,26 @@ class StagePlan:
     selected: List[StepCost]
     latest_consumption: Counter
     latest_shortage: Counter
-    candidate_consumption: Counter
-    candidate_shortage: Counter
+    candidate_groups: List["CandidateGroup"]
     mana: int
     stone_pt: int
     feasible_count: int
     mana_blocked: int
+
+
+@dataclass
+class CandidateGroup:
+    items: List[Tuple[eInventoryType, int]]
+    demand: int
+    inventory: Counter
+
+    @property
+    def inventory_total(self) -> int:
+        return sum(self.inventory[item] for item in self.items)
+
+    @property
+    def shortage_total(self) -> int:
+        return max(0, self.demand - self.inventory_total)
 
 
 class SyncGrowthController(UnitController):
@@ -375,22 +389,54 @@ class SyncGrowthController(UnitController):
             cost.stone_pt,
         )
 
-    def _candidate_stage_consumption(self, costs: List[StepCost]) -> Counter:
-        anchor_slots = min(SYNC_ANCHOR_COUNT, len(costs))
-        free_slots = sum(1 for cost in costs if not cost.latest_demand)
-        paid_slots = max(0, anchor_slots - min(anchor_slots, free_slots))
-        if paid_slots == 0:
-            return Counter()
+    def _select_stage_costs(self, costs: List[StepCost], remaining: Counter, remaining_mana: int) -> List[StepCost]:
+        selected: List[StepCost] = []
+        candidates = list(costs)
+        stage_remaining = remaining.copy()
+        stage_remaining_mana = remaining_mana
 
-        grouped = {}
+        while candidates and len(selected) < SYNC_ANCHOR_COUNT:
+            priced_candidates = [
+                self._reprice_cost(cost, stage_remaining)
+                for cost in candidates
+                if cost.mana <= stage_remaining_mana
+            ]
+            if not priced_candidates:
+                break
+
+            priced_candidates.sort(
+                key=lambda cost: (
+                    cost.latest_shortage_total,
+                    cost.latest_demand_total,
+                    cost.latest_type_count,
+                    cost.mana,
+                    cost.unit_id,
+                )
+            )
+            priced = priced_candidates[0]
+            selected.append(priced)
+            stage_remaining -= priced.latest_demand
+            stage_remaining_mana -= priced.mana
+            candidates = [cost for cost in candidates if cost.unit_id != priced.unit_id]
+
+        return selected
+
+    def _candidate_stage_groups(self, costs: List[StepCost], demand: Counter, inventory: Counter) -> List[CandidateGroup]:
+        if not demand:
+            return []
+
+        items = []
+        seen = set()
         for cost in costs:
-            for item, count in cost.latest_demand.items():
-                grouped.setdefault(item, []).append(count)
+            for item in cost.latest_demand:
+                if item not in seen:
+                    seen.add(item)
+                    items.append(item)
 
-        consumption = Counter()
-        for item, counts in grouped.items():
-            consumption[item] = sum(sorted(counts, reverse=True)[:paid_slots])
-        return consumption
+        if not items:
+            return []
+
+        return [CandidateGroup(items, sum(demand.values()), inventory.copy())]
 
     def _plan_steps(self, start: RankStage, target: RankStage) -> List[StagePlan]:
         remaining = Counter(self.client.data.inventory)
@@ -427,40 +473,30 @@ class SyncGrowthController(UnitController):
                     cost.unit_id,
                 )
             )
-            candidate_consumption = self._candidate_stage_consumption(feasible)
-            candidate_shortage = self._latest_shortage(candidate_consumption, remaining)
-
-            selected: List[StepCost] = []
-            stage_remaining = remaining.copy()
-            stage_remaining_mana = remaining_mana
-
-            for cost in feasible:
-                if len(selected) >= SYNC_ANCHOR_COUNT:
-                    break
-                priced = self._reprice_cost(cost, stage_remaining)
-                if priced.mana > stage_remaining_mana:
-                    continue
-                selected.append(priced)
-                stage_remaining -= priced.latest_demand
-                stage_remaining_mana -= priced.mana
+            selected = self._select_stage_costs(feasible, remaining, remaining_mana)
 
             stage_consumption = Counter()
             stage_shortage = Counter()
             stage_mana = 0
             stage_stone_pt = 0
+            stage_remaining = remaining.copy()
+            stage_remaining_mana = remaining_mana
             for cost in selected:
                 stage_consumption += cost.latest_demand
                 stage_shortage += cost.latest_shortage
                 stage_mana += cost.mana
                 stage_stone_pt += cost.stone_pt
+                stage_remaining -= cost.latest_demand
+                stage_remaining_mana -= cost.mana
+
+            candidate_groups = self._candidate_stage_groups(feasible, stage_consumption, remaining)
 
             steps.append(StagePlan(
                 target=step_target,
                 selected=selected,
                 latest_consumption=stage_consumption,
                 latest_shortage=stage_shortage,
-                candidate_consumption=candidate_consumption,
-                candidate_shortage=candidate_shortage,
+                candidate_groups=candidate_groups,
                 mana=stage_mana,
                 stone_pt=stage_stone_pt,
                 feasible_count=len(feasible),
@@ -531,14 +567,18 @@ class SyncGrowthController(UnitController):
             self._log("")
             self._log(f"阶段 {self._format_state(step.target)}")
 
-            if step.candidate_consumption or step.candidate_shortage:
-                detail = self._format_counter_detail(step.candidate_consumption, step.candidate_shortage)
-                self._log(f"碎片总消耗（缺口）：{detail}")
+            for group in step.candidate_groups:
+                detail = "，".join(
+                    f"{db.get_inventory_name_san(item)}库存{group.inventory[item]}"
+                    for item in group.items
+                )
+                self._log(
+                    f"候选碎片：{detail}；合计{group.inventory_total}/{group.demand}（缺口{group.shortage_total}）"
+                )
 
-            if step.latest_consumption != step.candidate_consumption:
+            if step.latest_consumption:
                 detail = self._format_counter_detail(step.latest_consumption, step.latest_shortage)
-                if detail:
-                    self._log(f"锚点碎片消耗（缺口）：{detail}")
+                self._log(f"推荐锚点碎片消耗（缺口）：{detail}")
 
             if step.selected:
                 names = "，".join(db.get_unit_name(cost.unit_id) for cost in step.selected)

@@ -1,6 +1,7 @@
 from abc import abstractmethod
 from collections import Counter
-from typing import List
+from dataclasses import dataclass
+from typing import List, Tuple
 
 from ...model.common import ShopInfo
 from ...model.custom import ItemType
@@ -173,52 +174,46 @@ class underground_shop(shop_buyer):
     def require_equip_units_rank(self) -> str: return self.get_config('underground_shop_buy_equip_consider_unit_rank')
 
 
+@dataclass
+class SyncGrowthEquipGroup:
+    items: Tuple[ItemType, ...]
+    target_count: int
+
+
 class sync_growth_shop_buyer(shop_buyer):
     def _unit_memory_count(self):
         return -999999
 
-    def _get_fragment_compose_count(self, item: ItemType) -> int:
-        if item[0] != eInventoryType.Equip or item[1] not in db.equip_data:
-            return 1
-        original = db.equip_data[item[1]].original_equipment_id
-        if not original:
-            return 1
-        for material, count in db.equip_craft.get((eInventoryType.Equip, original), []):
-            if material == item and count > 0:
-                return count
-        return 1
-
-    def _get_sync_growth_equip_targets(self, client: pcrclient) -> Tuple[Counter, Counter]:
+    def _get_sync_growth_equip_targets(self, client: pcrclient) -> List[SyncGrowthEquipGroup]:
         _, _, steps = build_sync_growth_plan(client)
-        demand = Counter()
+        demand_groups = Counter()
         for step in steps:
-            demand += step.candidate_consumption
+            for group in step.candidate_groups:
+                if group.demand > 0:
+                    demand_groups[tuple(group.items)] += group.demand
 
-        item_target = Counter()
-        category_target = Counter()
-        for item, need in demand.items():
-            current = client.data.get_inventory(item)
-            if current >= need:
-                continue
-            compose_count = self._get_fragment_compose_count(item)
-            rounded_target = ((need + compose_count - 1) // compose_count) * compose_count
-            item_target[item] = rounded_target
-            category = db.equip_data[item[1]].equipment_category
-            category_target[category] += rounded_target
+        return [
+            SyncGrowthEquipGroup(items, target_count)
+            for items, target_count in demand_groups.items()
+        ]
 
-        return item_target, category_target
+    def _get_group_inventory(self, client: pcrclient, group: SyncGrowthEquipGroup) -> int:
+        return sum(client.data.get_inventory(item) for item in group.items)
 
-    def _log_sync_growth_targets(self, item_target: Counter, category_target: Counter):
-        if not item_target:
+    def _log_sync_growth_targets(self, equip_groups: List[SyncGrowthEquipGroup], client: pcrclient):
+        if not equip_groups:
             return
-        grouped = {}
-        for item, target_count in item_target.items():
-            category = db.equip_data[item[1]].equipment_category
-            grouped.setdefault(category, []).append((item, target_count))
-
-        for category, items in grouped.items():
-            names = "，".join(f"{db.get_inventory_name_san(item)}->{target_count}" for item, target_count in items)
-            self._log(f"同步器类型{category}待购买：{names}；总量{category_target[category]}")
+        for idx, group in enumerate(equip_groups, start=1):
+            current = self._get_group_inventory(client, group)
+            if current >= group.target_count:
+                continue
+            names = "，".join(
+                f"{db.get_inventory_name_san(item)}{client.data.get_inventory(item)}"
+                for item in group.items
+            )
+            self._log(
+                f"同步器候选购装{idx}：{names}；合计{current}/{group.target_count}，缺口{group.target_count - current}"
+            )
 
     async def do_task(self, client: pcrclient):
         lmt = self.coin_limit()
@@ -229,21 +224,10 @@ class sync_growth_shop_buyer(shop_buyer):
         prev = client.data.get_shop_gold(shop_content.system_id)
         old_reset_cnt = shop_content.reset_count
         result = []
-        equip_item_target, equip_category_target = self._get_sync_growth_equip_targets(client)
-        self._log_sync_growth_targets(equip_item_target, equip_category_target)
+        equip_groups = self._get_sync_growth_equip_targets(client)
+        self._log_sync_growth_targets(equip_groups, client)
 
         while True:
-            category_inventory = Counter({
-                db.equip_data[item[1]].equipment_category: 0
-                for item in equip_item_target
-            })
-            for token, count in client.data.inventory.items():
-                if token[0] != eInventoryType.Equip or token[1] not in db.equip_data:
-                    continue
-                category = db.equip_data[token[1]].equipment_category
-                if category in equip_category_target:
-                    category_inventory[category] += count
-
             gold = client.data.get_shop_gold(shop_content.system_id)
             if gold < lmt:
                 raise SkipError(f"商店货币{gold}不足{lmt}，将不进行购买")
@@ -251,18 +235,16 @@ class sync_growth_shop_buyer(shop_buyer):
             target = [
                 (item.slot_id, item.price.currency_num)
                 for item in shop_content.item_list
-                if not item.sold and db.is_equip((item.type, item.item_id)) and (
-                    client.data.get_inventory((item.type, item.item_id)) < equip_item_target[(item.type, item.item_id)] or
-                    category_inventory[db.equip_data[item.item_id].equipment_category] < equip_category_target[db.equip_data[item.item_id].equipment_category]
+                if not item.sold and db.is_equip((item.type, item.item_id)) and any(
+                    (item.type, item.item_id) in group.items and
+                    self._get_group_inventory(client, group) < group.target_count
+                    for group in equip_groups
                 )
             ]
 
             if len(target) == 0 and all(
-                client.data.get_inventory(item) >= target_count
-                for item, target_count in equip_item_target.items()
-            ) and all(
-                category_inventory[category] >= target_count
-                for category, target_count in equip_category_target.items()
+                self._get_group_inventory(client, group) >= group.target_count
+                for group in equip_groups
             ):
                 self._log('当前已无同步器缺口装备需求，停止购买')
                 break
