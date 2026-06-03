@@ -19,23 +19,35 @@ from ...util.linq import flow
 class find_talent_quest(Module):
     async def do_task(self, client: pcrclient):
         self._log(f"深域通关: {client.data.get_talent_quest_info()}")
-        princess_knight_info = client.data.princess_knight_info
-        if princess_knight_info:
+        if client.data.princess_knight_info:
             self._log(f"属性等级: {client.data.get_talent_level_info()}")
             self._log(f"属性技能: {client.data.get_talent_skill_info()}")
             self._log(f"大师技能: {client.data.get_master_skill_info()}")
-
+        roles = client.data.unit_role_list
+        role_ticket_num = client.data.unit_role_gacha_exec_count + client.data.get_inventory(db.unit_role_gach_ticket)
+        role_logs = [f"职能练度({role_ticket_num}):", client.data.get_role_level_info()]
+        self._log("\n".join(role_logs))
         data = {}
         data.update({
-            f"{db.talents[talent_id].talent_name}深域": client.data.get_talent_quest_single(talent_id) for talent_id in sorted([area.talent_id for area in db.talent_quest_area_data.values()])
+            f"{db.talents[talent_id].talent_name}深域": client.data.get_talent_quest_single(talent_id)
+            for talent_id in sorted([area.talent_id for area in db.talent_quest_area_data.values()])
         })
-        data.update({
-            f"{db.talents[talent_info.talent_id].talent_name}属性": client.data.get_talent_level_single(talent_info) for talent_info in client.data.princess_knight_info.talent_level_info_list
-        })
-        data.update({
-            "属性技能": client.data.get_talent_skill_info(),
-            "大师技能": client.data.get_master_skill_info(),
-        })
+        if client.data.princess_knight_info:
+            data.update({
+                f"{db.talents[talent_info.talent_id].talent_name}属性": client.data.get_talent_level_single(talent_info)
+                for talent_info in client.data.princess_knight_info.talent_level_info_list
+            })
+            data.update({
+                "属性技能": client.data.get_talent_skill_info(),
+                "大师技能": client.data.get_master_skill_info(),
+            }) 
+        if roles:
+            data["职能券"] = f"{role_ticket_num}"
+            data.update({
+                    f"{db.unit_role_type[role.unit_role_id].unit_role_name}": client.data.get_role_level_single(role)
+                    for role in roles
+                })
+
         header = list(data.keys())
         self._table_header(header)
         self._table(data)

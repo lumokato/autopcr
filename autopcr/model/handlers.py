@@ -533,6 +533,7 @@ class LoadIndexResponse(responses.LoadIndexResponse):
         mgr.campaign_list = self.campaign_list
         mgr.dispatch_units = self.dispatch_units
         mgr.princess_knight_info = self.princess_knight_info
+        mgr.unit_role_list = self.unit_role_list
 
 @handles
 class HomeIndexResponse(responses.HomeIndexResponse):
@@ -1560,6 +1561,17 @@ class AlcesLockSlotResponse(responses.AlcesLockSlotResponse):
         if self.alces_data_list:
             for data in self.alces_data_list:
                 mgr.ex_equips[data.serial_id].sub_status = data.sub_status
+
+@handles
+class UnitRoleGachaIndexResponse(responses.UnitRoleGachaIndexResponse):
+    async def update(self, mgr: datamgr, request):
+        mgr.unit_role_gacha_exec_count = self.exec_count
+
+@handles
+class UnitRoleGachaExecResponse(responses.UnitRoleGachaExecResponse):
+    async def update(self, mgr: datamgr, request):
+        mgr.unit_role_gacha_exec_count = self.exec_count
+
 
 # 菜 就别玩
 # def custom_dict(self, *args, **kwargs):

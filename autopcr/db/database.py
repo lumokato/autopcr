@@ -69,6 +69,8 @@ class database():
     sun_ball: ItemType = (eInventoryType.Item, 25014)
     dark_ball: ItemType = (eInventoryType.Item, 25015)
     ex_rainbow_enhance_pt: ItemType = (eInventoryType.Item, 26202)
+    ex_rainbow_enhance_ball: ItemType = (eInventoryType.Item, 26203)
+    unit_role_gach_ticket: ItemType = (eInventoryType.Item, 23003)
 
     def __init__(self):
         self.dbmgr: Optional[dbmgr] = None
@@ -450,6 +452,11 @@ class database():
                 [False, True, False, True, True, True],
                 [False, True, True, True, True, True],
         ][self.equip_max_rank_equip_num - 3]
+
+    @lazy_property
+    def equip_max_rank_equip_star(self) -> List[int]:
+        slot = self.equip_max_rank_equip_slot
+        return [-1 if not i else 5 for i in slot] # now it always 5 star
 
     @lazy_property
     def unique_equipment_max_rank(self) -> Dict[int, int]:
@@ -1940,6 +1947,14 @@ class database():
                 .to_dict(lambda x: (x.type, x.item_id), lambda x: x)
             )
 
+    @lazy_property
+    def unit_role_type(self) -> Dict[int, UnitRoleType]:
+        with self.dbmgr.session() as db:
+            return (
+                UnitRoleType.query(db)
+                .to_dict(lambda x: x.unit_role_id, lambda x: x)
+            )
+
     def get_mirage_setting(self) -> MirageSetting:
         max_id = max(self.mirage_setting.keys(), default=1)
         return self.mirage_setting[max_id]
@@ -2790,15 +2805,7 @@ class database():
                 if ex_equip.serial_id:
                     ex_equip_data = ex_equips[ex_equip.serial_id]
                     star = self.get_ex_equip_star_from_pt(ex_equip_data.ex_equipment_id, ex_equip_data.enhancement_pt)
-                    attr = self.ex_equipment_data[ex_equip_data.ex_equipment_id].get_unit_attribute(star)
-                    if ex_equip_data.sub_status:
-                        group = self.ex_equipment_sub_status_group[ex_equip_data.ex_equipment_id]
-                        sub_status_data = db.ex_equipment_sub_status[group.group_id]
-                        for status in ex_equip_data.sub_status:
-                            value = sub_status_data[status.status].step_value(status.step)
-                            a = UnitAttribute()
-                            a.set_value(status.status, value)
-                            attr += a
+                    attr = self.ex_equipment_data[ex_equip_data.ex_equipment_id].get_unit_attribute(star, ex_equip_data.sub_status)
                     bonus = unit_attribute.ex_equipment_mul(attr).ceil()
                     ex_attribute += bonus
             unit_attribute += ex_attribute
