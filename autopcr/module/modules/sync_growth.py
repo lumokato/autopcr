@@ -1,6 +1,6 @@
 from collections import Counter
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Set, Tuple
 
 from ...core.pcrclient import pcrclient
 from ...db.database import db
@@ -14,6 +14,7 @@ from .unit import UnitController
 SYNC_STAGE_ORDER = [6, 4, 2, 5, 3, 1]
 SYNC_SLOT_INDEX = [slot_num - 1 for slot_num in SYNC_STAGE_ORDER]
 SYNC_ANCHOR_COUNT = 20
+SYNC_EXCLUDE_UNITS_CONFIG = "sync_growth_exclude_units"
 
 
 @dataclass(frozen=True)
@@ -376,8 +377,14 @@ class SyncGrowthController(UnitController):
         latest_shortage = self._latest_shortage(latest_demand, remaining)
         return StepCost(unit_id, target, latest_demand, latest_shortage, mana, stone_pt)
 
+    def _exclude_unit_ids(self) -> Set[int]:
+        if not hasattr(self, "config") or SYNC_EXCLUDE_UNITS_CONFIG not in self.config:
+            return set()
+        return {int(unit_id) for unit_id in self.get_config(SYNC_EXCLUDE_UNITS_CONFIG)}
+
     def _candidate_unit_ids(self) -> List[int]:
-        return sorted(self.client.data.unit.keys())
+        excluded = self._exclude_unit_ids()
+        return sorted(unit_id for unit_id in self.client.data.unit.keys() if unit_id not in excluded)
 
     def _reprice_cost(self, cost: StepCost, remaining: Counter) -> StepCost:
         return StepCost(
@@ -592,6 +599,7 @@ class SyncGrowthController(UnitController):
 @description("""自动读取当前同步器状态，自动推导当前可达终点，并按阶段规划20个锚点角色。
 默认只输出规划结果；开启执行后，会先把每阶段锚点角色免费同步到当前同步器状态，再正式拉到下一阶段，全部阶段完成后再免费同步其余角色。""")
 @name("同步器练度")
+@UnitListConfig(SYNC_EXCLUDE_UNITS_CONFIG, "排除角色")
 @booltype("sync_growth_do_execute", "执行", False)
 @default(False)
 class sync_growth(SyncGrowthController):
