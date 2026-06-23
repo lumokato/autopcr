@@ -5,7 +5,11 @@ from ..config import *
 from ...core.pcrclient import pcrclient
 from ...model.error import *
 from ...model.common import ExtraEquipChangeSlot, ExtraEquipChangeUnit, ExtraEquipProtectInfo, InventoryInfoPost
-from .exequip_cleanup_analyzer import ExEquipCleanupAnalyzer
+from .exequip_cleanup_analyzer import ExEquipCleanupAnalyzer, compute_max_possible_r2
+
+
+EX_EQUIP_SHOP_MONTHLY_LIMIT = 3
+EX_EQUIP_SHOP_SURPLUS_R2_TARGET = 2
 
 
 def _is_force_locked(ex_id: int) -> bool:
@@ -51,6 +55,52 @@ def _stats_for_ex(client, ex_id: int):
         'r0': [ex for ex in equips if ex.rank == 0],
         'all': equips,
     }
+
+
+def _plan_missing_normal_best_ex_equip_buys(report):
+    planned_by_ex_id = {}
+    for slot_report in report.slot_reports:
+        for row in slot_report.equip_reports:
+            if row.is_clan_battle or db.get_ex_equip_rarity(row.ex_equipment_id) != 3:
+                continue
+            best_demand = row.exclusive_best_count + row.shared_best_count
+            if best_demand <= 0:
+                continue
+            target = best_demand + EX_EQUIP_SHOP_SURPLUS_R2_TARGET
+            possible = compute_max_possible_r2({
+                'current_full_r2': row.current_full_r2,
+                'current_r2_not_full': row.current_r2_not_full,
+                'current_r1': row.current_r1,
+                'current_r0': row.current_r0,
+            })
+            shortage = target - possible
+            if shortage <= 0:
+                continue
+            planned = {
+                'row': row,
+                'buy_count': EX_EQUIP_SHOP_MONTHLY_LIMIT,
+                'best_demand': best_demand,
+                'target': target,
+                'possible': possible,
+                'shortage': shortage,
+            }
+            old = planned_by_ex_id.get(row.ex_equipment_id)
+            if old is None or shortage > old['shortage']:
+                planned_by_ex_id[row.ex_equipment_id] = planned
+    return sorted(planned_by_ex_id.values(), key=lambda item: (item['row'].slot_index, item['row'].category, item['row'].ex_equipment_id))
+
+
+def _log_planned_shop_buys(module: Module, planned_buys):
+    if not planned_buys:
+        module._log('预计商店购买: 无')
+        return
+    module._log('预计商店购买:')
+    for item in planned_buys:
+        row = item['row']
+        module._log(
+            f"{row.equip_name} +{item['buy_count']} "
+            f"(当前可成品{item['possible']} / 目标{item['target']} = 最优需求{item['best_demand']}+{EX_EQUIP_SHOP_SURPLUS_R2_TARGET})"
+        )
 
 
 async def _unlock_equips(client: pcrclient, equips):
@@ -207,16 +257,21 @@ def _log_report_summary(module: Module, report, title: str):
     module._log(f"槽位3实际EX总数: {slot_totals.get(3, 0)} / 实际满强总数: {slot_full_totals.get(3, 0)}")
 
 
-def _build_detail_rows(report):
+def _build_detail_rows(report, planned_buy_counts=None):
+    planned_buy_counts = planned_buy_counts or {}
     rows = []
     for slot_report in report.slot_reports:
         for item in slot_report.equip_reports:
+            current_text = f"{item.current_full_r2}/{item.current_r2_not_full}/{item.current_r1}/{item.current_r0}"
+            planned_buy_count = planned_buy_counts.get(item.ex_equipment_id, 0)
+            if planned_buy_count:
+                current_text += f"(+{planned_buy_count})"
             rows.append({
                 '槽位': item.slot_index,
                 '类别': item.category,
                 '装备': item.equip_name,
                 '类': '会战' if item.is_clan_battle else '普通',
-                '现状(满/r2/r1/r0)': f"{item.current_full_r2}/{item.current_r2_not_full}/{item.current_r1}/{item.current_r0}",
+                '现状(满/r2/r1/r0)': current_text,
                 '目标(总/满/r2)': f"{item.keep_target_min}/{item.full_target}/{max(0, item.keep_target_min - item.full_target)}",
                 '差值': item.evidence,
                 '可分解': item.decompose_candidate_count,
@@ -230,7 +285,8 @@ def _build_detail_rows(report):
 @inttype('ex_equip_cleanup_clan_floor_total', '会战最低保留总数', 10, list(range(0, 51)))
 @singlechoice('ex_equip_cleanup_enhance_mode', '强化模式', '强化一半', ['不强化', '强化一半', '全强化'])
 @inttype('ex_equip_cleanup_clan_full_cap', '会战最多强化数', 20, list(range(0, 51)))
-@description('执行 EX 装清理：按照战力最优原则，尝试解锁可编辑金/粉装，按目标合成/强化、分解溢出金装；关闭执行清理时仅返回执行前后的摘要，不真正操作')
+@booltype('ex_equip_cleanup_buy_missing_normal_best', '购买缺口普通最优装', False)
+@description('执行 EX 装清理：按照战力最优原则，尝试解锁可编辑金/粉装，按目标合成/强化、分解溢出金装；关闭执行清理时可预览普通最优金装缺口的商店购买计划并在表格现状中标记(+3)，不真正购买')
 @name('EX装清理')
 @default(True)
 class ex_equip_cleanup_execute(Module):
@@ -241,6 +297,7 @@ class ex_equip_cleanup_execute(Module):
         clan_floor = self.get_config('ex_equip_cleanup_clan_floor_total')
         enhance_mode = self.get_config('ex_equip_cleanup_enhance_mode')
         clan_full_cap = self.get_config('ex_equip_cleanup_clan_full_cap')
+        buy_missing_normal_best = self.get_config('ex_equip_cleanup_buy_missing_normal_best')
         analyzer = ExEquipCleanupAnalyzer(client, getattr(self._parent, 'alias', 'unknown'), normal_floor_total=normal_floor, clan_floor_total=clan_floor, enhance_mode=enhance_mode, clan_full_cap=clan_full_cap)
         before = analyzer.analyze()
 
@@ -299,7 +356,11 @@ class ex_equip_cleanup_execute(Module):
             self._table({'项目': '分解件数', '数值': recycle_actions})
             self._table({'项目': '粉装分组', '数值': pink_groups})
         else:
+            planned_buys = _plan_missing_normal_best_ex_equip_buys(before) if buy_missing_normal_best else []
             _log_report_summary(self, before, '预览汇总')
+            if buy_missing_normal_best:
+                _log_planned_shop_buys(self, planned_buys)
             self._table_header(['槽位', '类别', '装备', '类', '现状(满/r2/r1/r0)', '目标(总/满/r2)', '差值', '可分解'])
-            for row in _build_detail_rows(before):
+            planned_buy_counts = {item['row'].ex_equipment_id: item['buy_count'] for item in planned_buys}
+            for row in _build_detail_rows(before, planned_buy_counts):
                 self._table(row)
