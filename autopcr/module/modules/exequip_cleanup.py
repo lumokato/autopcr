@@ -20,6 +20,28 @@ def _choose_pink_progression_targets(items):
     return sorted(items, key=lambda ex: (-(1 if ex.rank == 1 else 0), -ex.enhancement_pt, -ex.rank))
 
 
+def _equipped_ex_slots(client):
+    equipped = {}
+    for unit_id, unit in client.data.unit.items():
+        for frame, ex_slots in enumerate([unit.ex_equip_slot, unit.cb_ex_equip_slot], start=1):
+            for ex_slot in ex_slots or []:
+                if ex_slot.serial_id:
+                    equipped[ex_slot.serial_id] = (unit_id, frame, ex_slot.slot)
+    return equipped
+
+
+def _restricted_ex_serials(client):
+    return set((getattr(client.data, 'user_clan_battle_ex_equip_restriction', None) or {}).keys())
+
+
+def _can_modify_ex(ex, restricted_serials):
+    return ex.protection_flag != 2 and ex.serial_id not in restricted_serials
+
+
+def _can_consume_ex(ex, blocked_serials):
+    return ex.protection_flag != 2 and ex.serial_id not in blocked_serials
+
+
 def _stats_for_ex(client, ex_id: int):
     equips = [ex for ex in client.data.ex_equips.values() if ex.ex_equipment_id == ex_id]
     return {
@@ -63,6 +85,9 @@ async def _rankup_to_target(client: pcrclient, ex_id: int, target_total: int):
     actions = 0
     rarity = db.get_ex_equip_rarity(ex_id)
     while True:
+        equipped_slots = _equipped_ex_slots(client)
+        restricted_serials = _restricted_ex_serials(client)
+        blocked_consume_serials = set(equipped_slots) | restricted_serials
         stats = _stats_for_ex(client, ex_id)
         current_total = len(stats['full']) + len(stats['r2'])
         if current_total >= target_total:
@@ -70,7 +95,7 @@ async def _rankup_to_target(client: pcrclient, ex_id: int, target_total: int):
         candidate = None
         need = 0
         if rarity == 4:
-            rankup_candidates = _choose_pink_progression_targets([ex for ex in stats['all'] if ex.rank < db.get_ex_equip_max_rank(ex_id)])
+            rankup_candidates = _choose_pink_progression_targets([ex for ex in stats['all'] if ex.rank < db.get_ex_equip_max_rank(ex_id) and _can_modify_ex(ex, restricted_serials)])
             if not rankup_candidates:
                 break
             candidate = rankup_candidates[0]
@@ -81,21 +106,25 @@ async def _rankup_to_target(client: pcrclient, ex_id: int, target_total: int):
             else:
                 break
         else:
-            if stats['r1']:
-                candidate = sorted(stats['r1'], key=lambda ex: ex.enhancement_pt, reverse=True)[0]
+            r1_candidates = [ex for ex in stats['r1'] if _can_modify_ex(ex, restricted_serials)]
+            r0_candidates = [ex for ex in stats['r0'] if _can_modify_ex(ex, restricted_serials)]
+            if r1_candidates:
+                candidate = sorted(r1_candidates, key=lambda ex: ex.enhancement_pt, reverse=True)[0]
                 need = 1
-            elif stats['r0']:
-                candidate = sorted(stats['r0'], key=lambda ex: ex.serial_id)[0]
+            elif r0_candidates:
+                candidate = sorted(r0_candidates, key=lambda ex: ex.serial_id)[0]
                 need = 2
             else:
                 break
-        fodder = [ex.serial_id for ex in (_choose_pink_progression_targets(stats['r0']) if rarity == 4 else sorted(stats['r0'], key=lambda ex: ex.serial_id)) if ex.serial_id != candidate.serial_id][:need]
+        fodder_candidates = [ex for ex in stats['r0'] if _can_consume_ex(ex, blocked_consume_serials)]
+        fodder = [ex.serial_id for ex in (_choose_pink_progression_targets(fodder_candidates) if rarity == 4 else sorted(fodder_candidates, key=lambda ex: ex.serial_id)) if ex.serial_id != candidate.serial_id][:need]
         if len(fodder) < need:
             break
         final_rank = candidate.rank + len(fodder)
         mana = db.get_ex_equip_rankup_cost(ex_id, candidate.rank, final_rank)
         await client.prepare_mana(mana)
-        await client.equipment_rankup_ex(serial_id=candidate.serial_id, unit_id=0, frame=0, slot=0, before_rank=candidate.rank, after_rank=final_rank, consume_gold=mana, from_view=2, item_list=[], consume_ex_serial_id_list=fodder)
+        unit_id, frame, slot = equipped_slots.get(candidate.serial_id, (0, 0, 0))
+        await client.equipment_rankup_ex(serial_id=candidate.serial_id, unit_id=unit_id, frame=frame, slot=slot, before_rank=candidate.rank, after_rank=final_rank, consume_gold=mana, from_view=2, item_list=[], consume_ex_serial_id_list=fodder)
         actions += 1
     return actions
 
@@ -104,17 +133,20 @@ async def _enhance_to_target(client: pcrclient, ex_id: int, target_full: int, en
     actions = 0
     rarity = db.get_ex_equip_rarity(ex_id)
     while True:
+        equipped_slots = _equipped_ex_slots(client)
+        restricted_serials = _restricted_ex_serials(client)
         stats = _stats_for_ex(client, ex_id)
         full_cnt = sum(1 for ex in stats['all'] if db.get_ex_equip_star_from_pt(ex.ex_equipment_id, ex.enhancement_pt) >= db.get_ex_equip_max_star(ex.ex_equipment_id, ex.rank)) if rarity == 4 else len(stats['full'])
         if full_cnt >= target_full:
             break
         if rarity == 4:
-            candidates = [ex for ex in _choose_pink_progression_targets(stats['all']) if db.get_ex_equip_star_from_pt(ex.ex_equipment_id, ex.enhancement_pt) < db.get_ex_equip_max_star(ex.ex_equipment_id, ex.rank)]
+            candidates = [ex for ex in _choose_pink_progression_targets(stats['all']) if _can_modify_ex(ex, restricted_serials) and db.get_ex_equip_star_from_pt(ex.ex_equipment_id, ex.enhancement_pt) < db.get_ex_equip_max_star(ex.ex_equipment_id, ex.rank)]
             if not candidates:
                 break
             candidate = candidates[0]
         else:
-            candidate = sorted(stats['r2'], key=lambda ex: ex.enhancement_pt, reverse=True)[0] if stats['r2'] else None
+            candidates = [ex for ex in stats['r2'] if _can_modify_ex(ex, restricted_serials)]
+            candidate = sorted(candidates, key=lambda ex: ex.enhancement_pt, reverse=True)[0] if candidates else None
             if not candidate:
                 break
         max_star = db.get_ex_equip_max_star(ex_id, candidate.rank)
@@ -123,7 +155,8 @@ async def _enhance_to_target(client: pcrclient, ex_id: int, target_full: int, en
         demand_pt = db.get_ex_equip_enhance_pt(ex_id, candidate.enhancement_pt, max_star)
         mana = db.get_ex_equip_enhance_mana(ex_id, candidate.enhancement_pt, max_star)
         await client.prepare_mana(mana)
-        await client.equipment_enhance_ex(unit_id=0, serial_id=candidate.serial_id, frame=0, slot=0, before_enhancement_pt=candidate.enhancement_pt, after_enhancement_pt=candidate.enhancement_pt + demand_pt, consume_gold=mana, from_view=2, item_list=[InventoryInfoPost(type=db.ex_pt[0], id=db.ex_pt[1], count=demand_pt)], consume_ex_serial_id_list=[])
+        unit_id, frame, slot = equipped_slots.get(candidate.serial_id, (0, 0, 0))
+        await client.equipment_enhance_ex(unit_id=unit_id, serial_id=candidate.serial_id, frame=frame, slot=slot, before_enhancement_pt=candidate.enhancement_pt, after_enhancement_pt=candidate.enhancement_pt + demand_pt, consume_gold=mana, from_view=2, item_list=[InventoryInfoPost(type=db.ex_pt[0], id=db.ex_pt[1], count=demand_pt)], consume_ex_serial_id_list=[])
         actions += 1
     return actions
 
@@ -132,13 +165,15 @@ async def _recycle_excess(client: pcrclient, ex_id: int, keep_total: int, full_t
     rarity = db.get_ex_equip_rarity(ex_id)
     if rarity in (4, 5):
         return 0
+    equipped_slots = _equipped_ex_slots(client)
+    blocked_consume_serials = set(equipped_slots) | _restricted_ex_serials(client)
     stats = _stats_for_ex(client, ex_id)
     keep_r2 = max(0, keep_total - full_target)
     recycle_ids = []
-    r2_excess = sorted(stats['r2'], key=lambda ex: ex.enhancement_pt)
+    r2_excess = sorted([ex for ex in stats['r2'] if _can_consume_ex(ex, blocked_consume_serials)], key=lambda ex: ex.enhancement_pt)
     if len(r2_excess) > keep_r2:
         recycle_ids.extend(ex.serial_id for ex in r2_excess[keep_r2:])
-    recycle_ids.extend(ex.serial_id for ex in stats['r0'])
+    recycle_ids.extend(ex.serial_id for ex in stats['r0'] if _can_consume_ex(ex, blocked_consume_serials))
     gap = client.data.settings.ex_equip.ex_equip_limit_consume_num
     actions = 0
     for i in range(0, len(recycle_ids), gap):
