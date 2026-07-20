@@ -5,6 +5,7 @@ from .assetmgr import assetmgr
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 from ..util.logger import instance as logger
+from ..util.cache_cleanup import atomic_write_bytes
 
 class dbmgr:
     def __init__(self):
@@ -17,8 +18,7 @@ class dbmgr:
         self._dbpath = os.path.join(CACHE_DIR, 'db', f'{ver}.db')
         if not os.path.exists(self._dbpath):
             data = await mgr.db()
-            with open(self._dbpath, 'wb') as f:
-                f.write(data)
+            atomic_write_bytes(self._dbpath, data)
             logger.info(f'db version {ver} updated')
         self._engine = create_engine(f'sqlite:///{self._dbpath}')
         self.ver = ver

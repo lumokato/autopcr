@@ -1,51 +1,18 @@
-x-app-version: &app_version "2026.04.17.1"
-
-# ==============================================================================
-# 项目: AutoPCR (GitOps 部署版)
-# ==============================================================================
-# 部署方式: 
-#   Portainer -> Stacks -> Add Stack -> Repository
-#   在此模式下，Portainer 会拉取代码并依据下方的 build: . 构建镜像
-#
-# 敏感配置 (需要在 Portainer 的 Environment variables 中填入):
-#   - DOMAIN_NAME:     服务域名
-#   - NETWORK_NAME:    Traefik所在的网络名
-#   - HOST_DATA_PATH:  宿主机数据挂载根目录
-# 版本触发:
-#   - 修改 x-app-version 可触发 GitOps 感知配置变更
-#   - 建议格式: YYYY.MM.DD.N，例如 2026.04.17.1
-#
-# 端口说明:
-#   - 容器内部暴露: 13200
-#   - 外部访问: 通过 Traefik 代理，无需映射宿主机端口
-# ==============================================================================
-
 services:
-  app-autopcr:
-    build: .
-    image: app-autopcr:latest
-    container_name: app-autopcr
+  autopcr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: autopcr:latest
+    container_name: autopcr
     restart: unless-stopped
-    
     volumes:
-      - ${HOST_DATA_PATH}/cache:/app/cache
-      - ${HOST_DATA_PATH}/log:/app/log
-      - ${HOST_DATA_PATH}/result:/app/result  
-    
-    # 网络设置
+      - /opt/infra/stacks/app-autopcr/cache:/app/cache
+      - /opt/infra/stacks/app-autopcr/log:/app/log
+      - /opt/infra/stacks/app-autopcr/result:/app/result
     networks:
-      - traefik_net
-    
-    # Traefik 标签配置
-    labels:
-      traefik.enable: "true"
-      traefik.http.routers.autopcr.rule: Host(`${DOMAIN_NAME}`)
-      traefik.http.routers.autopcr.entrypoints: websecure
-      traefik.http.routers.autopcr.tls.certresolver: letsencrypt
-      traefik.http.services.autopcr.loadbalancer.server.port: "13200"
-      gitops.revision: *app_version
+      - dokploy-network
 
 networks:
-  traefik_net:
+  dokploy-network:
     external: true
-    name: ${NETWORK_NAME}

@@ -2,6 +2,7 @@
 from typing import List
 from ..util import aiorequests
 from ..util.logger import instance as logger
+from ..util.cache_cleanup import atomic_write_text
 from ..constants import CACHE_DIR
 import os, pydantic
 import UnityPy
@@ -86,8 +87,7 @@ class assetmgr:
                 category='AssetBundles/Android',
                 children=await content.from_url(f'{self.manifest}/AssetBundles/Android/{ver}/', 'manifest/manifest_assetmanifest', 'AssetBundles/Android')
             )
-            with open(cacheFile, 'w') as f:
-                f.write(self.root.json())
+            atomic_write_text(cacheFile, self.root.json())
 
         self.ver = ver
         self.root.register_to(self)

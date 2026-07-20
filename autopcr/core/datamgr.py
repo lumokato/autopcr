@@ -12,7 +12,9 @@ from ..db.dbmgr import instance as dbmgr
 from ..db.database import db
 from ..db.models import ItemDatum, TrainingQuestDatum
 from ..util.linq import flow
-from asyncio import Lock
+from ..util.cache_cleanup import cleanup_version_cache
+from ..util.logger import instance as logger
+from asyncio import Lock, to_thread
 
 _data_lck = Lock()
 
@@ -77,11 +79,18 @@ class datamgr(BaseModel, Component[apiclient]):
     @staticmethod
     async def try_update_database(ver: int):
         async with _data_lck:
+            database_updated = False
             if not assetmgr.ver or assetmgr.ver < ver:
                 await assetmgr.init(ver)
-            if not dbmgr.ver or dbmgr.ver < assetmgr.ver: 
+            if not dbmgr.ver or dbmgr.ver < assetmgr.ver:
                 await dbmgr.update_db(assetmgr)
                 db.update(dbmgr)
+                database_updated = True
+            if database_updated:
+                try:
+                    await to_thread(cleanup_version_cache, dbmgr.ver)
+                except Exception:
+                    logger.exception("Database cache cleanup failed")
 
     def update_stamina_recover(self):
         max_stamina = db.team_info[self.team_level].max_stamina
