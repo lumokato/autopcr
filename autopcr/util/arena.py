@@ -1,18 +1,20 @@
 from typing import List, Set, Tuple
 import json, asyncio, time
+from os import remove
 from os.path import join, exists
 from random import choice, sample, choices
 
 from ..model.custom import PLACEHOLDER, ArenaQueryType, ArenaQueryUnit, ArenaRegion, ArenaQueryResult, ArenaQueryResponse
 from . import aiorequests, pcrdapi
 from ..util.logger import instance as logger
+from ..constants import ARENA_CACHE_MAX_AGE_SECONDS
 
 try:
     from hoshino.modules.priconne.arena.arena import curpath as CACHE_DIR
 except:
     from ..constants import CACHE_DIR
 
-RECENTTIME = 3600 * 24 * 5
+RECENTTIME = ARENA_CACHE_MAX_AGE_SECONDS
 
 class ArenaQuery:
     bufferpath = join(CACHE_DIR, 'buffer')
@@ -29,8 +31,16 @@ class ArenaQuery:
             with open(self.timepath, 'w', encoding="utf-8") as fp:
                 fp.write("{}")
 
-        with open(self.timepath, 'r', encoding="utf-8") as fp:
-            self.buffer = json.load(fp)
+        try:
+            with open(self.timepath, 'r', encoding="utf-8") as fp:
+                self.buffer = json.load(fp)
+        except (OSError, ValueError):
+            logger.exception("failed to load arena cache metadata, resetting it")
+            self.buffer = {}
+        if not isinstance(self.buffer, dict):
+            logger.warning("arena cache metadata is invalid, resetting it")
+            self.buffer = {}
+        self.prune_buffer()
 
     _endpoint = 'https://api.pcrdfans.com/x/v1/search'
     _headers = {
@@ -71,6 +81,22 @@ class ArenaQuery:
         with open(self.timepath, 'w', encoding="utf-8") as fp:
             json.dump(self.buffer, fp, ensure_ascii=False, indent=4)
 
+    def prune_buffer(self):
+        changed = False
+        for key, timestamp in list(self.buffer.items()):
+            if self.is_recent_time(timestamp) and self.is_exist_result(key):
+                continue
+            self.buffer.pop(key, None)
+            try:
+                remove(self.result_path(key))
+            except FileNotFoundError:
+                pass
+            except OSError:
+                logger.exception("failed to remove expired arena cache %s", self.result_path(key))
+            changed = True
+        if changed:
+            self.save_buffer()
+
     def result_path(self, key: str) -> str:
         return join(self.bufferpath, f'{key}.json') 
 
@@ -91,7 +117,10 @@ class ArenaQuery:
             json.dump([json.loads(ret.json(by_alias=True)) for ret in result], fp, indent=4, ensure_ascii=False)
 
     def is_recent_time(self, timestamp: int) -> bool:
-        return int(time.time()) - timestamp < RECENTTIME
+        try:
+            return int(time.time()) - int(timestamp) < RECENTTIME
+        except (TypeError, ValueError):
+            return False
 
     def is_recent_buffer(self, key: str) -> bool:
         return self.is_recent_time(self.buffer.get(key, 0)) and self.is_exist_result(key)

@@ -9,18 +9,24 @@ from copy import copy
 from ..core.sdkclient import account, platform
 from .modulemgr import ModuleManager, TaskResult, ModuleResult, eResultStatus, TaskResultInfo, ModuleResultInfo, ResultInfo
 import os, re, shutil
+from pathlib import Path
 from typing import Any, Dict, Iterator, List, Tuple, Union
 from ..constants import CLAN_BATTLE_FORBID_PATH, CONFIG_PATH, OLD_CONFIG_PATH, RESULT_DIR, BSDK, CHANNEL_OPTION, SUPERUSER
 from asyncio import Lock
 import json
 from copy import deepcopy
-import hashlib
 from ..db.database import db
 import datetime
 import traceback
 from ..core.clientpool import instance as clientpool, PoolClientWrapper
 from ..sdk.sdkclients import create
 from ..util.logger import instance as logger
+from ..util.cache_cleanup import (
+    account_cache_id,
+    cleanup_account_artifacts,
+    cleanup_runtime_cache,
+    legacy_account_cache_id,
+)
 
 class AccountException(Exception):
     pass
@@ -61,7 +67,8 @@ class Account(ModuleManager):
         self._lck = Account._account_locks.setdefault(self._filename, Lock())
         self._parent = parent
         self.readonly = readonly
-        self._id = hashlib.md5(account.encode('utf-8')).hexdigest()
+        self._legacy_id = legacy_account_cache_id(account)
+        self._id = account_cache_id(qid, account)
 
         if not os.path.exists(self._filename):
             if account == BATCHINFO:
@@ -159,6 +166,10 @@ class Account(ModuleManager):
     @property
     def id(self) -> str:
         return self._id
+
+    @property
+    def legacy_id(self) -> str:
+        return self._legacy_id
 
     def get_last_daily_clean(self) -> TaskResultInfo:
         daily_result = self.get_daily_result_list()
@@ -371,14 +382,28 @@ class AccountManager:
     def path(self, account: str) -> str:
         return os.path.join(self.root, account + '.json')
 
-    def delete(self, account: str): 
+    def delete(self, account: str, cleanup_orphans: bool = True):
         if not AccountManager.pathsyntax.fullmatch(account):
             raise AccountException(f'非法账户名{account}')
-        os.remove(self.path(account))
+        config_path = self.path(account)
+        try:
+            cleanup_account_artifacts(self.qid, account, config_path)
+        except Exception:
+            logger.exception("Failed to clean artifacts for account %s/%s", self.qid, account)
+        os.remove(config_path)
+        if cleanup_orphans:
+            try:
+                cleanup_runtime_cache()
+            except Exception:
+                logger.exception("Failed to clean orphaned caches after deleting account %s/%s", self.qid, account)
 
     def delete_all_accounts(self):
-        for account in self.accounts():
-            self.delete(account)
+        for account in list(self.accounts()):
+            self.delete(account, cleanup_orphans=False)
+        try:
+            cleanup_runtime_cache()
+        except Exception:
+            logger.exception("Failed to clean orphaned caches after deleting accounts for %s", self.qid)
 
     def delete_mgr(self):
         self._parent.delete(self.qid)
@@ -535,7 +560,17 @@ class UserManager:
         if account:
             self.load(qid).delete(account)
         else:
-            shutil.rmtree(self.qid_path(qid))
+            user_path = self.qid_path(qid)
+            for config_path in list(Path(user_path).glob("*.json")):
+                try:
+                    cleanup_account_artifacts(qid, config_path.stem, config_path)
+                except Exception:
+                    logger.exception("Failed to clean artifacts for account %s/%s", qid, config_path.stem)
+            shutil.rmtree(user_path)
+            try:
+                cleanup_runtime_cache()
+            except Exception:
+                logger.exception("Failed to clean orphaned caches after deleting user %s", qid)
 
     def qids(self) -> Iterator[str]:
         for fn in os.listdir(self.root):

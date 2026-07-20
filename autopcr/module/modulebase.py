@@ -11,6 +11,7 @@ from enum import Enum
 from datetime import datetime
 from ..db.database import db
 from ..util.logger import instance as logger
+from ..util.cache_cleanup import migrate_legacy_module_cache
 
 def default(val):
     return lambda cls:_wrap_init(cls, lambda self: setattr(self, 'default', val))
@@ -149,11 +150,21 @@ class Module:
 
         from os.path import join
         self.cache_path: str = join(CACHE_DIR, "modules", self.key, self._parent.id + ".json")
+        legacy_id = getattr(self._parent, "legacy_id", None)
+        self.legacy_cache_path: str = (
+            join(CACHE_DIR, "modules", self.key, legacy_id + ".json")
+            if legacy_id else self.cache_path
+        )
         self.cache_ready = False
         self._cache = {}
 
     def init_cache(self):
         from os.path import exists
+        if not exists(self.cache_path):
+            try:
+                migrate_legacy_module_cache(self.cache_path, self.legacy_cache_path)
+            except OSError:
+                logger.exception("Failed to migrate legacy module cache %s", self.legacy_cache_path)
         if not exists(self.cache_path):
             from os import makedirs
             from os.path import dirname

@@ -9,11 +9,13 @@ from dataclasses_json import dataclass_json
 from ..module.modulebase import eResultStatus
 from ..module.accountmgr import instance as usermgr, AccountManager
 from ..db.database import db
-from ..constants import CACHE_DIR
+from ..constants import CACHE_DIR, CRON_LOG_MAX_BYTES
 import os
 from ..util.logger import instance as logger
+from ..util.cache_cleanup import compact_file_tail, queue_cache_cleanup
 
 CRONLOG_PATH = os.path.join(CACHE_DIR, "http_server", "cron_log.txt")
+_cron_log_lock = asyncio.Lock()
 
 class eCronOperation(Enum):
     START = "start"
@@ -99,15 +101,24 @@ async def _run_crons(cur: datetime.datetime):
 
     if pending:
         await asyncio.gather(*pending)
-        
+
 
 async def write_cron_log(operation: eCronOperation, cur: datetime.datetime, qid: str, account: str, status: eResultStatus, log: str = ""):
-    if not os.path.exists(os.path.dirname(CRONLOG_PATH)):
-        os.mkdir(os.path.dirname(CRONLOG_PATH))
-    async with aiofiles.open(CRONLOG_PATH, "a") as fp:
-        await fp.write(CronLog(operation, cur, qid, account, status, log).to_json() + "\n")
+    os.makedirs(os.path.dirname(CRONLOG_PATH), exist_ok=True)
+    async with _cron_log_lock:
+        try:
+            if os.path.getsize(CRONLOG_PATH) >= CRON_LOG_MAX_BYTES * 2:
+                await asyncio.to_thread(compact_file_tail, CRONLOG_PATH, CRON_LOG_MAX_BYTES)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            logger.exception("Failed to compact cron log %s", CRONLOG_PATH)
+        async with aiofiles.open(CRONLOG_PATH, "a") as fp:
+            await fp.write(CronLog(operation, cur, qid, account, status, log).to_json() + "\n")
+
 
 def queue_crons():
     async def task(cur):
         await _run_crons(cur)
     asyncio.get_event_loop().create_task(_cron(task))
+    queue_cache_cleanup()
