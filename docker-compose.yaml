@@ -1,9 +1,7 @@
 services:
   autopcr:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: autopcr:latest
+    image: ghcr.io/lumokato/autopcr:latest
+    pull_policy: always
     container_name: autopcr
     restart: unless-stopped
     environment:
