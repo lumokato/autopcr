@@ -12,7 +12,7 @@ services:
       AUTOPCR_MODULE_STATE_DIR: /app/local/modules
       AUTOPCR_RESULT_DIR: /app/local/result
       AUTOPCR_LOG_DIR: /app/local/log
-      AUTOPCR_CRON_ENABLED: "true"
+      AUTOPCR_CRON_ENABLED: "${AUTOPCR_CRON_ENABLED:-true}"
     volumes:
       - autopcr-config:/app/state
       - autopcr-local:/app/local
