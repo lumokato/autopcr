@@ -23,6 +23,7 @@ from ..constants import (
     MODULE_STATE_DIR,
     RESULT_DIR,
     RESULT_ORPHAN_GRACE_SECONDS,
+    RESULT_RETENTION_SECONDS,
 )
 from .logger import instance as logger
 
@@ -237,6 +238,35 @@ def _cleanup_unreferenced_files(
         _remove_file(path, report, category)
 
 
+def _cleanup_result_files(
+    directory: Path,
+    referenced: Set[str],
+    report: CleanupReport,
+    orphan_grace_seconds: int = RESULT_ORPHAN_GRACE_SECONDS,
+    retention_seconds: int = RESULT_RETENTION_SECONDS,
+    now: Optional[float] = None,
+) -> None:
+    if not directory.exists():
+        return
+
+    current_time = time.time() if now is None else now
+    orphan_cutoff = current_time - max(0, orphan_grace_seconds)
+    retention_cutoff = current_time - max(0, retention_seconds)
+    for path in directory.iterdir():
+        if not path.is_file() or path.name.startswith(".") or path.suffix != ".json":
+            continue
+        try:
+            modified_at = path.stat().st_mtime
+        except FileNotFoundError:
+            continue
+
+        if path.name in referenced:
+            if retention_seconds and modified_at <= retention_cutoff:
+                _remove_file(path, report, "result_expired")
+        elif not orphan_grace_seconds or modified_at <= orphan_cutoff:
+            _remove_file(path, report, "result_orphan")
+
+
 def _migrate_module_caches(modules_dir: Path, refs: AccountCacheReferences, report: CleanupReport) -> None:
     if not modules_dir.exists():
         return
@@ -384,6 +414,7 @@ def cleanup_runtime_cache(
     dry_run: bool = CACHE_CLEANUP_DRY_RUN,
     now: Optional[float] = None,
     compact_cron_log: bool = False,
+    result_retention_seconds: int = RESULT_RETENTION_SECONDS,
 ) -> CleanupReport:
     report = CleanupReport(dry_run=dry_run)
     cache_root = Path(cache_dir)
@@ -392,14 +423,13 @@ def cleanup_runtime_cache(
     if refs.valid:
         _cleanup_unreferenced_files(cache_root / "pool", refs.pool_ids, report, "pool", now=now)
         _cleanup_unreferenced_files(cache_root / "token", refs.token_ids, report, "token", now=now)
-        _cleanup_unreferenced_files(
+        _cleanup_result_files(
             Path(result_dir),
             refs.result_files,
             report,
-            "result",
-            grace_seconds=RESULT_ORPHAN_GRACE_SECONDS,
+            orphan_grace_seconds=RESULT_ORPHAN_GRACE_SECONDS,
+            retention_seconds=result_retention_seconds,
             now=now,
-            allowed_suffixes={".json"},
         )
         modules_dir = Path(module_state_dir)
         _migrate_module_caches(modules_dir, refs, report)

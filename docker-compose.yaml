@@ -13,6 +13,8 @@ services:
       AUTOPCR_RESULT_DIR: /app/local/result
       AUTOPCR_LOG_DIR: /app/local/log
       AUTOPCR_CRON_ENABLED: "${AUTOPCR_CRON_ENABLED:-true}"
+      AUTOPCR_CACHE_VERSION_KEEP: "${AUTOPCR_CACHE_VERSION_KEEP:-1}"
+      AUTOPCR_RESULT_RETENTION_DAYS: "${AUTOPCR_RESULT_RETENTION_DAYS:-30}"
     volumes:
       - autopcr-config:/app/state
       - autopcr-local:/app/local
