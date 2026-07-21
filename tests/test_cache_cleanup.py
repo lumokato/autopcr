@@ -73,6 +73,7 @@ class CacheCleanupTest(unittest.TestCase):
             recent_orphan_result = result_dir / "recent-orphan.json"
             for path in (keep_result, old_orphan_result, recent_orphan_result):
                 path.write_text("{}", encoding="utf-8")
+            os.utime(keep_result, (now - 86400, now - 86400))
             os.utime(old_orphan_result, (now - 8 * 86400, now - 8 * 86400))
             os.utime(recent_orphan_result, (now - 86400, now - 86400))
 
@@ -161,6 +162,48 @@ class CacheCleanupTest(unittest.TestCase):
             self.assertTrue(token_file.exists())
             self.assertTrue(result_file.exists())
             self.assertGreater(report.errors, 0)
+
+    def test_runtime_cleanup_expires_old_referenced_results(self):
+        now = 1_800_000_000.0
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            cache_dir = root / "cache"
+            config_dir = cache_dir / "http_server"
+            result_dir = root / "result"
+            user_dir = config_dir / "123456"
+            user_dir.mkdir(parents=True)
+            result_dir.mkdir()
+
+            expired = result_dir / "expired.json"
+            recent = result_dir / "recent.json"
+            expired.write_text("{}", encoding="utf-8")
+            recent.write_text("{}", encoding="utf-8")
+            os.utime(expired, (now - 31 * 86400, now - 31 * 86400))
+            os.utime(recent, (now - 29 * 86400, now - 29 * 86400))
+            (user_dir / "account.json").write_text(
+                json.dumps({
+                    "daily_result": [
+                        {"path": str(expired)},
+                        {"path": str(recent)},
+                    ],
+                    "single_result": {},
+                }),
+                encoding="utf-8",
+            )
+
+            report = cleanup_runtime_cache(
+                cache_dir=cache_dir,
+                config_dir=config_dir,
+                module_state_dir=cache_dir / "modules",
+                result_dir=result_dir,
+                dry_run=False,
+                now=now,
+                result_retention_seconds=30 * 86400,
+            )
+
+            self.assertFalse(expired.exists())
+            self.assertTrue(recent.exists())
+            self.assertEqual(report.categories, {"result_expired": 1})
 
     def test_account_artifact_cleanup_removes_results_and_scoped_modules(self):
         with tempfile.TemporaryDirectory() as temp_dir:
