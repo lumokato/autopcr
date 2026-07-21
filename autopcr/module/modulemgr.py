@@ -7,6 +7,7 @@ from abc import abstractmethod, abstractproperty
 from ..model.error import *
 from ..model.enums import *
 from ..db.database import db
+from ..util.result_storage import resolve_result_path
 from .modulebase import Module, ModuleResult, eResultStatus
 from ..core.clientpool import PoolClientWrapper
 import traceback
@@ -35,14 +36,26 @@ class ResultInfo:
     _type: str = ""
     status: eResultStatus = eResultStatus.SKIP
 
+    def resolved_path(self) -> str:
+        return resolve_result_path(self.path)
+
+    def result_exists(self) -> bool:
+        return os.path.isfile(self.resolved_path())
+
     def save_result(self, result):
-        with open(self.path, 'w') as f:
+        target = self.resolved_path()
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, 'w') as f:
             f.write(result.to_json())
+
     def delete_result(self):
-        if os.path.exists(self.path):
-            os.remove(self.path)
+        target = self.resolved_path()
+        if os.path.isfile(target):
+            os.remove(target)
+
     def get_result(self):
         raise NotImplementedError
+
     def response(self, url_format: str):
         url = url_format.format(self.alias)
         return ResultInfo(alias = self.alias, key = self.key, time = self.time, url = url, status = self.status)
@@ -52,7 +65,7 @@ class ResultInfo:
 class TaskResultInfo(ResultInfo):
     _type: str = "daily_result"
     def get_result(self) -> TaskResult:
-        with open(self.path, 'r') as f:
+        with open(self.resolved_path(), 'r') as f:
             return TaskResult.from_json(f.read())
 
 @dataclass_json
@@ -60,7 +73,7 @@ class TaskResultInfo(ResultInfo):
 class ModuleResultInfo(ResultInfo):
     _type: str = "single_result"
     def get_result(self) -> ModuleResult:
-        with open(self.path, 'r') as f:
+        with open(self.resolved_path(), 'r') as f:
             return ModuleResult.from_json(f.read())
 
 class ModuleManager:

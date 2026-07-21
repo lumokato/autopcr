@@ -100,7 +100,9 @@ class CacheCleanupTest(unittest.TestCase):
                 report = cleanup_runtime_cache(
                     cache_dir=cache_dir,
                     config_dir=config_dir,
+                    module_state_dir=cache_dir / "modules",
                     result_dir=result_dir,
+                    cron_log_path=cron_log,
                     dry_run=False,
                     now=now,
                     compact_cron_log=True,
@@ -149,6 +151,7 @@ class CacheCleanupTest(unittest.TestCase):
             report = cleanup_runtime_cache(
                 cache_dir=cache_dir,
                 config_dir=config_dir,
+                module_state_dir=cache_dir / "modules",
                 result_dir=result_dir,
                 dry_run=False,
                 now=2_000_000_000,
@@ -185,7 +188,7 @@ class CacheCleanupTest(unittest.TestCase):
                 "123456",
                 "3-1",
                 config_file,
-                cache_dir=cache_dir,
+                module_state_dir=cache_dir / "modules",
                 result_dir=result_dir,
                 dry_run=False,
             )

@@ -11,7 +11,7 @@ from .modulemgr import ModuleManager, TaskResult, ModuleResult, eResultStatus, T
 import os, re, shutil
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Tuple, Union
-from ..constants import CLAN_BATTLE_FORBID_PATH, CONFIG_PATH, OLD_CONFIG_PATH, RESULT_DIR, BSDK, CHANNEL_OPTION, SUPERUSER
+from ..constants import CLAN_BATTLE_FORBID_PATH, CONFIG_PATH, OLD_CONFIG_PATH, BSDK, CHANNEL_OPTION, SUPERUSER
 from asyncio import Lock
 import json
 from copy import deepcopy
@@ -116,9 +116,9 @@ class Account(ModuleManager):
     async def save_daily_result(self, result: TaskResult, status: eResultStatus) -> TaskResultInfo:
         now = datetime.datetime.now()
         time_safe = db.format_time_safe(now)
-        file = os.path.join(RESULT_DIR, f"{self.token}_daily_{time_safe}.json")
+        filename = f"{self.token}_daily_{time_safe}.json"
 
-        item = TaskResultInfo(alias = self.alias, key=time_safe, path = file, time = db.format_time(now), status = status)
+        item = TaskResultInfo(alias = self.alias, key=time_safe, path = filename, time = db.format_time(now), status = status)
         item.save_result(result)
         self.data.daily_result = await self.push_result(self.data.daily_result, item)
         return item
@@ -126,9 +126,9 @@ class Account(ModuleManager):
     async def save_single_result(self, module: str, result: ModuleResult) -> ModuleResultInfo:
         now = datetime.datetime.now()
         time_safe = db.format_time_safe(now)
-        file = os.path.join(RESULT_DIR, f"{self.token}_{module}_{time_safe}.json")
+        filename = f"{self.token}_{module}_{time_safe}.json"
 
-        item = ModuleResultInfo(alias = self.alias, key = time_safe, path = file, time = db.format_time(now), status = result.status)
+        item = ModuleResultInfo(alias = self.alias, key = time_safe, path = filename, time = db.format_time(now), status = result.status)
         item.save_result(result)
         self.data.single_result[module] = await self.push_result(self.data.single_result.get(module, []), item)
         return item
@@ -179,11 +179,11 @@ class Account(ModuleManager):
             return TaskResultInfo()
 
     def get_daily_result_list(self) -> List[TaskResultInfo]:
-        ret = self.data.daily_result
+        ret = [result for result in self.data.daily_result if result.result_exists()]
         return ret
 
     def get_single_result_list(self, module: str) -> List[ModuleResultInfo]:
-        ret = self.data.single_result.get(module, [])
+        ret = [result for result in self.data.single_result.get(module, []) if result.result_exists()]
         return ret
 
     async def get_client(self) -> PoolClientWrapper:
