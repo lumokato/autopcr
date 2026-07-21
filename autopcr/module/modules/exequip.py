@@ -25,7 +25,7 @@ def _group_ex_equip_changes(changes):
 
 def _ex_equip_state_cache_path(module: Module):
     from os.path import join
-    return join(CACHE_DIR, "modules", "ex_equip_state", module._parent.id + ".json")
+    return join(MODULE_STATE_DIR, "ex_equip_state", module._parent.id + ".json")
 
 def _save_ex_equip_state_cache(module: Module, state):
     from os import makedirs

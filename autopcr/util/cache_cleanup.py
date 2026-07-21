@@ -18,7 +18,9 @@ from ..constants import (
     CACHE_DIR,
     CACHE_VERSION_KEEP,
     CONFIG_PATH,
+    CRON_LOG_PATH,
     CRON_LOG_MAX_BYTES,
+    MODULE_STATE_DIR,
     RESULT_DIR,
     RESULT_ORPHAN_GRACE_SECONDS,
 )
@@ -376,7 +378,9 @@ def compact_file_tail(
 def cleanup_runtime_cache(
     cache_dir: os.PathLike | str = CACHE_DIR,
     config_dir: os.PathLike | str = CONFIG_PATH,
+    module_state_dir: os.PathLike | str = MODULE_STATE_DIR,
     result_dir: os.PathLike | str = RESULT_DIR,
+    cron_log_path: os.PathLike | str = CRON_LOG_PATH,
     dry_run: bool = CACHE_CLEANUP_DRY_RUN,
     now: Optional[float] = None,
     compact_cron_log: bool = False,
@@ -397,7 +401,7 @@ def cleanup_runtime_cache(
             now=now,
             allowed_suffixes={".json"},
         )
-        modules_dir = cache_root / "modules"
+        modules_dir = Path(module_state_dir)
         _migrate_module_caches(modules_dir, refs, report)
         _cleanup_orphan_module_caches(modules_dir, refs, report, now=now)
     else:
@@ -407,7 +411,7 @@ def cleanup_runtime_cache(
     _cleanup_arena_buffer(cache_root / "buffer", report, now=now)
     if compact_cron_log:
         reclaimed = compact_file_tail(
-            Path(config_dir) / "cron_log.txt",
+            cron_log_path,
             CRON_LOG_MAX_BYTES,
             dry_run=dry_run,
         )
@@ -420,7 +424,7 @@ def cleanup_account_artifacts(
     qid: str,
     alias: str,
     config_file: os.PathLike | str,
-    cache_dir: os.PathLike | str = CACHE_DIR,
+    module_state_dir: os.PathLike | str = MODULE_STATE_DIR,
     result_dir: os.PathLike | str = RESULT_DIR,
     dry_run: bool = CACHE_CLEANUP_DRY_RUN,
 ) -> CleanupReport:
@@ -444,7 +448,7 @@ def cleanup_account_artifacts(
             _remove_file(path, report, "account_result")
 
     scoped_id = account_cache_id(qid, alias)
-    modules_dir = Path(cache_dir) / "modules"
+    modules_dir = Path(module_state_dir)
     if modules_dir.exists():
         for path in modules_dir.glob(f"*/{scoped_id}.json"):
             _remove_file(path, report, "account_module")

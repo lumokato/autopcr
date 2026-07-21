@@ -6,12 +6,39 @@ services:
     image: autopcr:latest
     container_name: autopcr
     restart: unless-stopped
+    environment:
+      AUTOPCR_CONFIG_DIR: /app/state/http_server
+      AUTOPCR_CACHE_DIR: /app/local/cache
+      AUTOPCR_MODULE_STATE_DIR: /app/local/modules
+      AUTOPCR_RESULT_DIR: /app/local/result
+      AUTOPCR_LOG_DIR: /app/local/log
+      AUTOPCR_CRON_ENABLED: "true"
     volumes:
-      - /opt/infra/stacks/app-autopcr/cache:/app/cache
-      - /opt/infra/stacks/app-autopcr/log:/app/log
-      - /opt/infra/stacks/app-autopcr/result:/app/result
+      - autopcr-config:/app/state
+      - autopcr-local:/app/local
+    mem_limit: 2g
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:13200/daily/account', timeout=5)
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     networks:
       - dokploy-network
+
+volumes:
+  autopcr-config:
+    external: true
+    name: autopcr-config
+  autopcr-local:
+    external: true
+    name: autopcr-local
 
 networks:
   dokploy-network:

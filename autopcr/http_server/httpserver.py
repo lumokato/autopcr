@@ -12,7 +12,7 @@ from quart_compress import Compress
 from quart_rate_limiter import RateLimiter, rate_limit, RateLimitExceeded
 
 from .validator import validate_dict, ValidateInfo, validate_ok_dict, enable_manual_validator
-from ..constants import CACHE_DIR, ALLOW_REGISTER, SUPERUSER
+from ..constants import ALLOW_REGISTER, SUPERUSER
 from ..module.accountmgr import Account, AccountManager, instance as usermgr, AccountException, UserData, \
     PermissionLimitedException, UserDisabledException, UserException
 from ..util.draw import instance as drawer
@@ -20,8 +20,6 @@ from ..util.logger import instance as logger
 
 APP_VERSION_MAJOR = 1
 APP_VERSION_MINOR = 7
-
-CACHE_HTTP_DIR = os.path.join(CACHE_DIR, 'http_server')
 
 PATH = os.path.dirname(os.path.abspath(__file__))
 static_path = os.path.join(PATH, 'ClientApp')
