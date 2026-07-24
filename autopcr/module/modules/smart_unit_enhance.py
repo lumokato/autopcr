@@ -1,5 +1,5 @@
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from ...core.pcrclient import pcrclient
@@ -45,6 +45,7 @@ class StarExceedPlan:
     exceed_ring_id: int = 0
     exceed_memory_use: int = 0
     exceed_memory_buy: int = 0
+    unique1_memory_buy: int = 0
     memory_after: int = 0
     will_exceed: bool = False
     notes: List[str] = field(default_factory=list)
@@ -55,7 +56,11 @@ class StarExceedPlan:
 
     @property
     def memory_purchase(self) -> int:
-        return self.star_memory_buy + self.exceed_memory_buy
+        return (
+            self.star_memory_buy
+            + self.exceed_memory_buy
+            + self.unique1_memory_buy
+        )
 
 
 @dataclass
@@ -464,6 +469,7 @@ class GoddessPurchasePlan:
     quantity: int
     star_quantity: int
     exceed_quantity: int
+    unique1_quantity: int
     exchange_count: int
     segments: Tuple[ShopPriceSegment, ...]
 
@@ -545,7 +551,7 @@ class SmartEnhancePlan:
 @description(
     "自动规划全部已持有角色的五星、等级突破、专武2和专武1。"
     "\n地图可刷角色不使用母猪石；不可刷角色可购买碎片升五星，40片突破可继续购买，120片突破只使用戒指。"
-    "\n专武1保留设置数量的心碎，依次优先完成仅差10/20心碎的角色、平铺到130级、再优先提升已有高等级专武。"
+    "\n专武1保留设置数量的心碎，依次优先完成仅差10/20心碎的角色、平铺到130级、再优先提升已有高等级专武；10/20心碎收尾角色缺少不可刷碎片时会使用母猪石补齐。"
     "\n默认仅预览，开启执行后才会实际消耗资源。"
 )
 @name("智能强化所有角色")
@@ -662,6 +668,7 @@ class smart_unit_enhance(UnitController):
                     quantity=plan.memory_purchase,
                     star_quantity=plan.star_memory_buy,
                     exceed_quantity=plan.exceed_memory_buy,
+                    unique1_quantity=plan.unique1_memory_buy,
                     exchange_count=exchange_count,
                     segments=segments,
                 )
@@ -734,6 +741,61 @@ class smart_unit_enhance(UnitController):
                 )
             )
         return result
+
+    def _plan_unique1_with_finisher_purchases(
+        self,
+        star_plan: StarExceedPlanningResult,
+        growth_limits: Mapping[int, Optional[GrowthParameterUnique]],
+        heart_inventory: int,
+        heart_keep: int,
+    ) -> Unique1PlanningResult:
+        base_inputs = self._unique1_inputs(star_plan, growth_limits)
+        star_by_unit = {item.unit_id: item for item in star_plan.units}
+        proposed: Dict[int, int] = {}
+        boosted_inputs: List[Unique1UnitInput] = []
+
+        for item in base_inputs:
+            star = star_by_unit[item.unit_id]
+            full_heart = sum(stage.heart_cost for stage in item.stages)
+            full_memory = sum(stage.memory_cost for stage in item.stages)
+            shortage = max(0, full_memory - item.memory_inventory)
+            can_buy_finisher = (
+                item.eligible
+                and full_heart in (10, 20)
+                and shortage > 0
+                and not star.source.farmable
+                and star.source.can_purchase_memory
+            )
+            if can_buy_finisher:
+                proposed[item.unit_id] = shortage
+                item = replace(
+                    item,
+                    memory_inventory=item.memory_inventory + shortage,
+                )
+            boosted_inputs.append(item)
+
+        simulated = plan_unique1(
+            boosted_inputs,
+            heart_inventory,
+            heart_keep,
+        )
+        selected = {
+            item.unit_id: proposed[item.unit_id]
+            for item in simulated.units
+            if item.unit_id in proposed
+            and len(item.allocations) == len(item.source.stages)
+        }
+
+        for unit_id, quantity in selected.items():
+            star = star_by_unit[unit_id]
+            star.unique1_memory_buy = quantity
+            star.memory_after += quantity
+
+        return plan_unique1(
+            self._unique1_inputs(star_plan, growth_limits),
+            heart_inventory,
+            heart_keep,
+        )
 
     def _unique2_plans(
         self,
@@ -826,12 +888,15 @@ class smart_unit_enhance(UnitController):
             general_ring_id,
             self.get_config("smart_unit_enhance_ring_keep"),
         )
-        purchases = self._purchase_plans(star_plan, shop_items)
-        unique1 = plan_unique1(
-            self._unique1_inputs(star_plan, growth_limits),
-            self.client.data.get_inventory(db.xinsui),
-            self.get_config("smart_unit_enhance_heart_keep"),
+        heart_inventory = self.client.data.get_inventory(db.xinsui)
+        heart_keep = self.get_config("smart_unit_enhance_heart_keep")
+        unique1 = self._plan_unique1_with_finisher_purchases(
+            star_plan,
+            growth_limits,
+            heart_inventory,
+            heart_keep,
         )
+        purchases = self._purchase_plans(star_plan, shop_items)
         unique2 = self._unique2_plans(unit_ids, growth_limits)
 
         relevant_specific_rings = {
@@ -856,6 +921,7 @@ class smart_unit_enhance(UnitController):
     def _log_plan(self, plan: SmartEnhancePlan, execute: bool) -> None:
         resources = plan.resources
         star = plan.star_exceed
+        star_by_unit = {item.unit_id: item for item in star.units}
         unique1 = plan.unique1
         self._log(f"模式：{'执行强化' if execute else '仅规划，不执行'}")
         self._log("== 资源汇总 ==")
@@ -947,6 +1013,9 @@ class smart_unit_enhance(UnitController):
             )
             if phases:
                 detail += f"（{phases}）"
+            unique1_memory_buy = star_by_unit[item.unit_id].unique1_memory_buy
+            if unique1_memory_buy:
+                detail += f"，母猪石购买角色碎片{unique1_memory_buy}"
             if item.memory_gap_to_max:
                 detail += f"，满专还缺角色碎片{item.memory_gap_to_max}"
             self._log(f"{db.get_unit_name(item.unit_id)}：{detail}")
@@ -971,6 +1040,7 @@ class smart_unit_enhance(UnitController):
         for item in plan.star_exceed.units:
             has_action = (
                 item.target_rarity > item.source.current_rarity
+                or item.unit_id in purchases
                 or item.exceed_method in (
                     EXCEED_SPECIFIC_RING,
                     EXCEED_GENERAL_RING,
