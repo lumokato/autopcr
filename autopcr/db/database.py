@@ -686,6 +686,14 @@ class database():
             )
 
     @lazy_property
+    def exceed_level_stage(self) -> Dict[int, ExceedLevelStage]:
+        with self.dbmgr.session() as db:
+            return (
+                ExceedLevelStage.query(db)
+                .to_dict(lambda x: x.exceed_stage, lambda x: x)
+            )
+
+    @lazy_property
     def unit_rarity(self) -> Dict[int, Dict[int, UnitRarity]]:
         with self.dbmgr.session() as db:
             return (
