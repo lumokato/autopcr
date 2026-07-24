@@ -552,7 +552,7 @@ class SmartEnhancePlan:
     "自动规划全部已持有角色的五星、等级突破、专武2和专武1。"
     "\n地图可刷角色不使用母猪石；不可刷角色可购买碎片升五星，40片突破可继续购买，120片突破只使用戒指。"
     "\n专武1保留设置数量的心碎，依次优先完成仅差10/20心碎的角色、平铺到130级、再优先提升已有高等级专武；10/20心碎收尾角色缺少不可刷碎片时会使用母猪石补齐。"
-    "\n默认仅预览，开启执行后才会实际消耗资源。"
+    "\n默认仅预览，开启执行后会先从可可萝钱包将玛娜提至持有上限。"
 )
 @name("智能强化所有角色")
 @booltype("smart_unit_enhance_execute", "执行强化", False)
@@ -918,109 +918,116 @@ class smart_unit_enhance(UnitController):
             large_heart_inventory=self.client.data.get_inventory(db.heart),
         )
 
+    @staticmethod
+    def _brief_unit_names(unit_ids: Sequence[int], limit: int = 6) -> str:
+        unit_ids = sorted(set(unit_ids))
+        names = [db.get_unit_name(unit_id) for unit_id in unit_ids[:limit]]
+        suffix = f"等{len(unit_ids)}人" if len(unit_ids) > limit else ""
+        return "、".join(names) + suffix
+
     def _log_plan(self, plan: SmartEnhancePlan, execute: bool) -> None:
         resources = plan.resources
         star = plan.star_exceed
         star_by_unit = {item.unit_id: item for item in star.units}
         unique1 = plan.unique1
-        self._log(f"模式：{'执行强化' if execute else '仅规划，不执行'}")
-        self._log("== 资源汇总 ==")
+        mode = "执行" if execute else "预览"
+        self._log(f"智能强化：{mode}")
         self._log(
-            f"母猪石：库存{plan.amulet_inventory}，计划消耗{resources.amulets}，"
-            f"缺口{plan.amulet_deficit}"
+            f"资源：母猪石 库存{plan.amulet_inventory}/消耗{resources.amulets}/"
+            f"缺口{plan.amulet_deficit}；通用戒指 库存{star.general_ring_inventory}/"
+            f"消耗{resources.general_rings}/保留{star.general_ring_keep}；"
+            f"专属戒指 库存{plan.specific_ring_inventory}/消耗{resources.specific_rings}"
         )
-        if star.general_ring_id:
-            ring_name = db.get_item_name(star.general_ring_id)
-            self._log(
-                f"{ring_name}：库存{star.general_ring_inventory}，保留"
-                f"{star.general_ring_keep}，计划消耗{resources.general_rings}"
-            )
+        heart_extra = f"；大心{plan.large_heart_inventory}未计" if plan.large_heart_inventory else ""
         self._log(
-            f"专属戒指：库存{plan.specific_ring_inventory}，"
-            f"计划消耗{resources.specific_rings}"
+            f"心碎：库存{unique1.heart_inventory}/消耗{resources.hearts}/"
+            f"保留{unique1.heart_keep}{heart_extra}"
         )
+        bank = self.client.data.user_gold_bank_info
+        bank_mana = bank.bank_gold if bank else 0
+        mana = self.client.data.get_mana()
+        mana_limit = self.client.data.settings.limit.limit_gold
+        fill_to = min(mana_limit, mana + bank_mana)
         self._log(
-            f"心碎：库存{unique1.heart_inventory}，保留{unique1.heart_keep}，"
-            f"可用{unique1.heart_available}，计划消耗{resources.hearts}，"
-            f"执行后剩余{unique1.heart_inventory - resources.hearts}"
-        )
-        if plan.large_heart_inventory:
-            self._log(
-                f"另有大心{plan.large_heart_inventory}个，本方法不自动拆分，未计入可用心碎"
-            )
-        self._log(
-            f"一专按现有角色碎片最多可消耗心碎{unique1.possible_heart_demand}，"
-            f"理论满专需{unique1.full_heart_demand}，角色碎片总缺口"
-            f"{unique1.memory_gap_to_max}"
+            f"玛娜：持有{mana / self.E:.2f}亿，钱包{bank_mana / self.E:.2f}亿，"
+            f"执行可提至{fill_to / self.E:.2f}亿"
         )
 
-        self._log("== 星级与突破 ==")
-        for item in star.units:
-            actions: List[str] = []
-            if item.target_rarity > item.source.current_rarity:
-                actions.append(
-                    f"{item.source.current_rarity}星->{item.target_rarity}星"
-                    f"（现有碎片{item.star_memory_use}，购买{item.star_memory_buy}）"
-                )
-            if item.exceed_method == EXCEED_SPECIFIC_RING:
-                actions.append(f"使用专属戒指{db.get_item_name(item.exceed_ring_id)}突破")
-            elif item.exceed_method == EXCEED_GENERAL_RING:
-                actions.append(f"使用{db.get_item_name(item.exceed_ring_id)}突破")
-            elif item.exceed_method == EXCEED_MEMORY:
-                actions.append(
-                    f"使用{item.source.exceed_memory_cost}片碎片突破"
-                    f"（购买{item.exceed_memory_buy}）"
-                )
-            actions.extend(item.notes)
-            if actions:
-                self._log(f"{db.get_unit_name(item.unit_id)}：" + "；".join(actions))
+        star_up = [item for item in star.units if item.target_rarity > item.source.current_rarity]
+        general_exceed = [item for item in star.units if item.exceed_method == EXCEED_GENERAL_RING]
+        specific_exceed = [item for item in star.units if item.exceed_method == EXCEED_SPECIFIC_RING]
+        memory_exceed = [item for item in star.units if item.exceed_method == EXCEED_MEMORY]
+        wait_star = [
+            item.unit_id for item in star.units
+            if item.source.current_rarity < 5 and item.target_rarity < 5
+        ]
+        wait_exceed = [
+            item.unit_id for item in star.units
+            if item.target_rarity >= 5 and not item.will_exceed
+        ]
+        self._log(
+            f"星级/突破：升星{len(star_up)}人（购片{sum(item.star_memory_buy for item in star_up)}）；"
+            f"通用戒指{len(general_exceed)}人、专属戒指{len(specific_exceed)}人、"
+            f"碎片突破{len(memory_exceed)}人；暂缓升星{len(wait_star)}/突破{len(wait_exceed)}"
+        )
 
-        self._log("== 专武2 ==")
-        if not plan.unique2:
-            self._log("没有待强化的专武2")
-        for item in plan.unique2:
-            if item.wait_reason:
-                self._log(f"{db.get_unit_name(item.unit_id)}：暂缓，{item.wait_reason}")
-            else:
-                self._log(
-                    f"{db.get_unit_name(item.unit_id)}：{item.current_level}->"
-                    f"{item.target_level}，消耗同名纯净记忆{item.pure_memory_needed}片"
-                )
+        unique2_run = [item for item in plan.unique2 if not item.wait_reason]
+        unique2_wait = [item.unit_id for item in plan.unique2 if item.wait_reason]
+        self._log(
+            f"专武2：强化{len(unique2_run)}人，纯净记忆"
+            f"{sum(item.pure_memory_needed for item in unique2_run)}；暂缓{len(unique2_wait)}"
+        )
 
-        self._log("== 专武1 ==")
-        waiting = [
+        unique1_run = [
             item for item in unique1.units
+            if item.source.eligible and item.target_level > item.source.current_level
+        ]
+        phase_units = {
+            phase: sum(
+                any(allocation.phase == phase for allocation in item.allocations)
+                for item in unique1_run
+            )
+            for phase in ("10/20心碎收尾", "平铺130级", "高专优先")
+        }
+        unique1_not_ready = [
+            item.unit_id for item in unique1.units
             if not item.source.eligible and item.source.stages
         ]
-        if waiting:
-            self._log(f"未五星突破暂缓：{len(waiting)}人")
-        has_unique1_action = False
+        farm_wait: List[int] = []
+        fragment_wait: List[int] = []
+        heart_wait: List[int] = []
         for item in unique1.units:
-            if not item.source.eligible:
+            stage = item.next_stage
+            if not item.source.eligible or stage is None:
                 continue
-            if (
-                item.target_level <= item.source.current_level
-                and item.memory_gap_to_max <= 0
-            ):
-                continue
-            has_unique1_action = True
-            phases = "、".join(dict.fromkeys(
-                allocation.phase for allocation in item.allocations
-            ))
-            detail = (
-                f"{item.source.current_level}->{item.target_level}，"
-                f"心碎{item.heart_use}，角色碎片{item.memory_use}"
-            )
-            if phases:
-                detail += f"（{phases}）"
-            unique1_memory_buy = star_by_unit[item.unit_id].unique1_memory_buy
-            if unique1_memory_buy:
-                detail += f"，母猪石购买角色碎片{unique1_memory_buy}"
-            if item.memory_gap_to_max:
-                detail += f"，满专还缺角色碎片{item.memory_gap_to_max}"
-            self._log(f"{db.get_unit_name(item.unit_id)}：{detail}")
-        if not has_unique1_action:
-            self._log("没有可执行的一专强化")
+            if stage.memory_cost > item.memory_remaining:
+                star_item = star_by_unit[item.unit_id]
+                purchasable_finisher = (
+                    not star_item.source.farmable
+                    and star_item.source.can_purchase_memory
+                    and item.full_heart_demand in (10, 20)
+                )
+                if purchasable_finisher:
+                    heart_wait.append(item.unit_id)
+                elif star_item.source.farmable:
+                    farm_wait.append(item.unit_id)
+                else:
+                    fragment_wait.append(item.unit_id)
+            else:
+                heart_wait.append(item.unit_id)
+
+        unique1_buy = sum(item.unique1_memory_buy for item in star.units)
+        self._log(
+            f"专武1：强化{len(unique1_run)}人（收尾{phase_units['10/20心碎收尾']}/"
+            f"平铺{phase_units['平铺130级']}/高专{phase_units['高专优先']}），"
+            f"角色碎片{sum(item.memory_use for item in unique1_run)}（母猪石补{unique1_buy}）；"
+            f"暂缓 未五星突破{len(unique1_not_ready)}/待刷{len(farm_wait)}/"
+            f"碎片不足{len(fragment_wait)}/心碎预算{len(heart_wait)}"
+        )
+
+        blocked = wait_star + wait_exceed + unique2_wait + unique1_not_ready + farm_wait + fragment_wait + heart_wait
+        if blocked:
+            self._log(f"暂缓角色：{self._brief_unit_names(blocked)}")
 
     async def _execute_purchase(self, purchase: GoddessPurchasePlan) -> None:
         for segment in purchase.segments:
@@ -1030,10 +1037,6 @@ class smart_unit_enhance(UnitController):
                 segment.quantity,
                 segment.total_price,
             )
-        self._log(
-            f"{db.get_unit_name(purchase.unit_id)}购买记忆碎片{purchase.quantity}片，"
-            f"消耗母猪石{purchase.total_price}"
-        )
 
     async def _execute_star_exceed(self, plan: SmartEnhancePlan) -> None:
         purchases = {item.unit_id: item for item in plan.goddess_purchases}
@@ -1077,9 +1080,6 @@ class smart_unit_enhance(UnitController):
                             memory_token
                         ),
                     )
-                    self._log(
-                        f"{self.unit_name}升至{item.target_rarity}星"
-                    )
 
                 if self.unit.exceed_stage:
                     continue
@@ -1119,7 +1119,6 @@ class smart_unit_enhance(UnitController):
                             ),
                         ],
                     )
-                self._log(f"{self.unit_name}完成等级突破")
             except Exception as error:
                 self._warn(f"{self.unit_name}星级/突破执行失败：{error}")
 
@@ -1131,7 +1130,11 @@ class smart_unit_enhance(UnitController):
             try:
                 slot = self.unit.unique_equip_slot[1]
                 if (slot.enhancement_level or 0) < item.target_level:
-                    await self.unit_unique_equip2_enhance_aware(item.target_level)
+                    log_start = len(self.log)
+                    try:
+                        await self.unit_unique_equip2_enhance_aware(item.target_level)
+                    finally:
+                        del self.log[log_start:]
             except Exception as error:
                 self._warn(f"{self.unit_name}专武2强化失败：{error}")
 
@@ -1157,9 +1160,13 @@ class smart_unit_enhance(UnitController):
                 if current_level >= item.target_level:
                     continue
                 limit = await self.is_unique_growth_unit()
-                await self.unit_unique_equip1_enhance_aware(
-                    item.target_level, limit
-                )
+                log_start = len(self.log)
+                try:
+                    await self.unit_unique_equip1_enhance_aware(
+                        item.target_level, limit
+                    )
+                finally:
+                    del self.log[log_start:]
             except Exception as error:
                 self._warn(f"{self.unit_name}专武1强化失败：{error}")
 
@@ -1177,6 +1184,13 @@ class smart_unit_enhance(UnitController):
                 f"库存{plan.amulet_inventory}，缺口{plan.amulet_deficit}；未执行任何强化"
             )
 
+        mana_drawn = await self.client.draw_from_bank_to_limit()
+        if mana_drawn:
+            self._log(
+                f"玛娜：钱包提取{mana_drawn / self.E:.2f}亿，"
+                f"当前{self.client.data.get_mana() / self.E:.2f}亿"
+            )
         await self._execute_star_exceed(plan)
         await self._execute_unique2(plan.unique2)
         await self._execute_unique1(plan.unique1)
+        self._log("执行结束，失败项见警告" if self.is_warn else "执行完成")

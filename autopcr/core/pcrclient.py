@@ -736,15 +736,25 @@ class pcrclient(apiclient):
         req.draw_gold = draw_gold
         return await self.request(req)
 
+    async def draw_from_bank_to_limit(self) -> int:
+        bank = self.data.user_gold_bank_info
+        if not bank or bank.bank_gold <= 0:
+            return 0
+        capacity = max(
+            0,
+            self.data.settings.limit.limit_gold - self.data.get_mana(),
+        )
+        draw_gold = min(bank.bank_gold, capacity)
+        if draw_gold <= 0:
+            return 0
+        await self.draw_from_bank(bank.bank_gold, draw_gold)
+        return draw_gold
+
     async def prepare_mana(self, mana: int):
         if self.data.get_mana() >= mana:
             return True
-        elif self.data.get_mana(include_bank = True) >= mana:
-            to_get = min(self.data.settings.limit.limit_gold, mana) - self.data.get_mana()
-            await self.draw_from_bank(self.data.user_gold_bank_info.bank_gold, to_get)
-            return True
-        else:
-            return False
+        await self.draw_from_bank_to_limit()
+        return self.data.get_mana() >= mana
 
     async def exec_gacha_aware(self, target_gacha: GachaParameter, gacha_times: int, draw_type: eGachaDrawType, current_cost_num: int, campaign_id: int, last_gacha_index_time: int, auto_select_pickup: bool = True, pickup_min_first: bool = False, ticket_item: ItemType = None) -> GachaReward:
 
