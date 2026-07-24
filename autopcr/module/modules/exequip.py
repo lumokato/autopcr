@@ -665,19 +665,18 @@ class ex_equip_power_maximun(Module):
                     if ex:
                         removable_serials.add(ex.serial_id)
 
-        available_equips = []
-        for ex in client.data.ex_equips.values():
-            if ex.serial_id in removable_serials:
-                available_equips.append(ex)
-                continue
-
-            equipped_normal = any(
-                ex_slot.serial_id == ex.serial_id
-                for unit in client.data.unit.values()
-                for ex_slot in unit.ex_equip_slot
-            )
-            if not equipped_normal:
-                available_equips.append(ex)
+        equipped_serials = {
+            ex_slot.serial_id
+            for unit in client.data.unit.values()
+            for ex_slot in unit.ex_equip_slot
+            if ex_slot.serial_id
+        }
+        available_equips = [
+            ex
+            for ex in client.data.ex_equips.values()
+            if ex.serial_id in removable_serials or ex.serial_id not in equipped_serials
+        ]
+        available_serials = {ex.serial_id for ex in available_equips}
 
         fixed_power_total = 0
         for (unit_id, slot_id), ex in fixed_assignments.items():
@@ -688,7 +687,7 @@ class ex_equip_power_maximun(Module):
                 exclude_ex_equip=True,
             )
             star = db.get_ex_equip_star_from_pt(ex.ex_equipment_id, ex.enhancement_pt)
-            attr = db.ex_equipment_data[ex.ex_equipment_id].get_unit_attribute(star)
+            attr = db.ex_equipment_data[ex.ex_equipment_id].get_unit_attribute(star, ex.sub_status)
             bonus = unit_attr.ex_equipment_mul(attr).ceil()
             fixed_power_total += int(bonus.get_power(coefficient) + 0.5)
 
@@ -696,6 +695,7 @@ class ex_equip_power_maximun(Module):
         st = 'st'
         ed = 'ed'
         slot_choice_power = {}
+        slot_choice_assignment = {}
 
         for unit_id, slot_id, ex_category in active_slots:
             slot_node = f"u{unit_id}k{slot_id}"
@@ -707,25 +707,44 @@ class ex_equip_power_maximun(Module):
                 exclude_ex_equip=True,
             )
 
-            grouped = flow(available_equips) \
-                .where(lambda ex: ex_category == db.ex_equipment_data[ex.ex_equipment_id].category) \
-                .group_by(lambda ex: (ex.ex_equipment_id, db.get_ex_equip_star_from_pt(ex.ex_equipment_id, ex.enhancement_pt))) \
-                .to_dict(lambda grp: grp.key, lambda grp: grp.count())
+            considered_normal = set()
+            for ex in available_equips:
+                ex_id = ex.ex_equipment_id
+                ex_data = db.ex_equipment_data[ex_id]
+                if ex_data.category != ex_category:
+                    continue
 
-            for (ex_id, star), _ in grouped.items():
-                ex_node = f"e{ex_id}s{star}"
-                attr = db.ex_equipment_data[ex_id].get_unit_attribute(star)
+                star = db.get_ex_equip_star_from_pt(ex_id, ex.enhancement_pt)
+                if db.get_ex_equip_rarity(ex_id) == 5:
+                    ex_node = f"r{ex.serial_id}"
+                    serial_id = ex.serial_id
+                    attr = ex_data.get_unit_attribute(star, ex.sub_status)
+                else:
+                    normal_key = (ex_id, star)
+                    if normal_key in considered_normal:
+                        continue
+                    considered_normal.add(normal_key)
+                    ex_node = f"e{ex_id}s{star}"
+                    serial_id = None
+                    attr = ex_data.get_unit_attribute(star)
+
                 bonus = unit_attr.ex_equipment_mul(attr).ceil()
                 power = int(bonus.get_power(coefficient) + 0.5)
                 is_clan = 1 if db.is_clan_ex_equip((eInventoryType.ExtraEquip, ex_id)) else 0
                 edges.append((slot_node, ex_node, 1, -(power * BIG) + is_clan))
-                slot_choice_power[(unit_id, slot_id, ex_id, star)] = power
+                choice_key = (unit_id, slot_id, ex_node)
+                slot_choice_power[choice_key] = power
+                slot_choice_assignment[choice_key] = (ex_id, star, serial_id)
 
         grouped_inventory = flow(available_equips) \
+            .where(lambda ex: db.get_ex_equip_rarity(ex.ex_equipment_id) != 5) \
             .group_by(lambda ex: (ex.ex_equipment_id, db.get_ex_equip_star_from_pt(ex.ex_equipment_id, ex.enhancement_pt))) \
             .to_dict(lambda grp: grp.key, lambda grp: grp.count())
         for (ex_id, star), count in grouped_inventory.items():
             edges.append((f"e{ex_id}s{star}", ed, count, 0))
+        for ex in available_equips:
+            if db.get_ex_equip_rarity(ex.ex_equipment_id) == 5:
+                edges.append((f"r{ex.serial_id}", ed, 1, 0))
 
         if edges:
             min_cost, strategy = ex_equip_power_max_cost_flow(edges, st, ed)
@@ -739,21 +758,24 @@ class ex_equip_power_maximun(Module):
         for u, v, flow_num in strategy:
             if u == st or v == ed or flow_num == 0:
                 continue
-            if not (u.startswith('u') and 'k' in u and v.startswith('e') and 's' in v):
+            if not (u.startswith('u') and 'k' in u and (v.startswith('r') or (v.startswith('e') and 's' in v))):
                 continue
 
             unit_id = int(u[1:u.index('k')])
             slot_id = int(u[u.index('k') + 1:])
-            ex_id = int(v[1:v.index('s')])
-            star = int(v[v.index('s') + 1:])
-            active_strategy[(unit_id, slot_id)] = (ex_id, star)
-            active_power_total += slot_choice_power.get((unit_id, slot_id, ex_id, star), 0)
+            choice_key = (unit_id, slot_id, v)
+            assignment = slot_choice_assignment.get(choice_key)
+            if assignment is None:
+                continue
+            active_strategy[(unit_id, slot_id)] = assignment
+            active_power_total += slot_choice_power.get(choice_key, 0)
 
         final_assignments = {}
         for key, ex in fixed_assignments.items():
             final_assignments[key] = (
                 ex.ex_equipment_id,
                 db.get_ex_equip_star_from_pt(ex.ex_equipment_id, ex.enhancement_pt),
+                ex.serial_id,
             )
         final_assignments.update(active_strategy)
 
@@ -780,6 +802,7 @@ class ex_equip_power_maximun(Module):
         if do_equip:
             used_serials = set()
             available_by_key = flow(available_equips) \
+                .where(lambda ex: db.get_ex_equip_rarity(ex.ex_equipment_id) != 5) \
                 .group_by(lambda ex: (ex.ex_equipment_id, db.get_ex_equip_star_from_pt(ex.ex_equipment_id, ex.enhancement_pt))) \
                 .to_dict(
                     lambda grp: grp.key,
@@ -787,11 +810,18 @@ class ex_equip_power_maximun(Module):
                 )
 
             equip_by_unit = {}
-            for (unit_id, slot_id), (ex_id, star) in final_assignments.items():
+            for (unit_id, slot_id), (ex_id, star, serial_id) in final_assignments.items():
                 if (unit_id, slot_id) in fixed_assignments:
                     continue
-                candidates = available_by_key.get((ex_id, star), [])
-                ex_to_equip = next((ex for ex in candidates if ex.serial_id not in used_serials), None)
+                if serial_id is not None:
+                    ex_to_equip = client.data.ex_equips.get(serial_id)
+                    if ex_to_equip and ex_to_equip.serial_id not in available_serials:
+                        ex_to_equip = None
+                else:
+                    candidates = available_by_key.get((ex_id, star), [])
+                    ex_to_equip = next((ex for ex in candidates if ex.serial_id not in used_serials), None)
+                if ex_to_equip and ex_to_equip.serial_id in used_serials:
+                    ex_to_equip = None
                 if not ex_to_equip:
                     self._warn(f"无{db.get_ex_equip_name(ex_id)}★{star}，无法装备")
                     continue
@@ -818,6 +848,11 @@ class ex_equip_power_maximun(Module):
 
         for unit_id in sorted(output_by_unit):
             msg = []
-            for (_, _), (ex_id, star) in output_by_unit[unit_id]:
-                msg.append(f"{db.get_ex_equip_name(ex_id)}{star}")
+            for (_, _), (ex_id, star, serial_id) in output_by_unit[unit_id]:
+                ex = client.data.ex_equips.get(serial_id) if serial_id is not None else None
+                if ex and db.get_ex_equip_rarity(ex_id) == 5:
+                    sub_status = db.get_ex_equip_sub_status_str(ex_id, ex.sub_status or [])
+                    msg.append(f"{db.get_ex_equip_name(ex_id)}{star}({sub_status})")
+                else:
+                    msg.append(f"{db.get_ex_equip_name(ex_id)}{star}")
             self._log(f"{db.get_unit_name(unit_id)} 装备 {','.join(msg)}")
