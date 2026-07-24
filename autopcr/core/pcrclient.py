@@ -555,6 +555,15 @@ class pcrclient(apiclient):
         req.cost_item_list = cost_item_list
         return await self.request(req)
 
+    async def unit_exceed_level_limit_with_exceed_item(
+        self, unit_id: int, exceed_stage: int, exceed_item_id: int
+    ):
+        req = UnitExceedLevelLimitWithExceedItemRequest()
+        req.unit_id = unit_id
+        req.exceed_stage = exceed_stage
+        req.exceed_item_id = exceed_item_id
+        return await self.request(req)
+
     async def equipment_enhance(self, unit_id: int, equip_slot_num: int, current_enhancement_pt: int, items: typing.Counter[ItemType]):
         req = EquipEnhanceRequest()
         req.unit_id = unit_id

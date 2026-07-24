@@ -22,6 +22,7 @@ from .tower import *
 from .tools import *
 from .travel import *
 from .unit import *
+from .smart_unit_enhance import *
 from .sync_growth import *
 from .talent import *
 from .mirage import *
@@ -180,6 +181,7 @@ unit_modules = ModuleList(
         sync_growth_underground_shop,
         unit_memory_buy,
         unit_set_unique_equip_growth,
+        smart_unit_enhance,
         unit_exceed,
         unit_evolution,
     ]
