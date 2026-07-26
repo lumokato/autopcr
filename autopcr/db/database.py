@@ -1507,6 +1507,15 @@ class database():
             )
 
     @lazy_property
+    def unique_equip_glow_ball_growth_id(self) -> Dict[int, int]:
+        with self.dbmgr.session() as db:
+            return (
+                ItemDatum.query(db)
+                .where(lambda x: x.item_id >= 21950 and x.item_id < 22000)
+                .to_dict(lambda x: x.item_id, lambda x: x.value)
+            )
+
+    @lazy_property
     def hatsune_item(self) -> Dict[int, HatsuneItem]:
         with self.dbmgr.session() as db:
             return (

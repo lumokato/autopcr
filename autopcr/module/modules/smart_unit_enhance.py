@@ -1,6 +1,6 @@
 from collections import Counter
 from dataclasses import dataclass, field, replace
-from typing import Callable, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from ...core.pcrclient import pcrclient
 from ...db.database import db
@@ -455,6 +455,92 @@ def plan_unique1(
 
 
 @dataclass(frozen=True)
+class Unique1GlowBallUnitInput:
+    unit_id: int
+    eligible: bool
+    unique1_equipped: bool
+    unique1_crafted: bool
+    has_growth_ball: bool
+    memory_inventory: int
+
+
+@dataclass(frozen=True)
+class Unique1GlowBallStock:
+    item_id: int
+    growth_id: int
+    target_level: int
+    count: int
+
+
+@dataclass(frozen=True)
+class Unique1GlowBallAssignment:
+    unit_id: int
+    item_id: int
+    growth_id: int
+    target_level: int
+
+
+@dataclass
+class Unique1GlowBallPlanningResult:
+    assignments: List[Unique1GlowBallAssignment]
+    inventory: int
+    keep: int
+    candidate_count: int
+
+    @property
+    def consumption(self) -> int:
+        return len(self.assignments)
+
+
+def plan_unique1_glow_balls(
+    units: Sequence[Unique1GlowBallUnitInput],
+    stocks: Sequence[Unique1GlowBallStock],
+    keep: int,
+) -> Unique1GlowBallPlanningResult:
+    """Allocate expendable UE1 glow balls from the lowest target level."""
+    candidates = sorted(
+        (
+            unit for unit in units
+            if unit.eligible
+            and not unit.unique1_equipped
+            and not unit.unique1_crafted
+            and not unit.has_growth_ball
+            and unit.memory_inventory < 50
+        ),
+        key=lambda unit: (max(0, unit.memory_inventory), unit.unit_id),
+    )
+    usable_stocks = sorted(
+        (stock for stock in stocks if stock.count > 0),
+        key=lambda stock: (stock.target_level, stock.item_id),
+    )
+    inventory = sum(stock.count for stock in usable_stocks)
+    use_count = min(len(candidates), max(0, inventory - max(0, keep)))
+
+    balls: List[Unique1GlowBallStock] = []
+    for stock in usable_stocks:
+        take = min(stock.count, use_count - len(balls))
+        balls.extend([stock] * take)
+        if len(balls) >= use_count:
+            break
+
+    assignments = [
+        Unique1GlowBallAssignment(
+            unit_id=unit.unit_id,
+            item_id=stock.item_id,
+            growth_id=stock.growth_id,
+            target_level=stock.target_level,
+        )
+        for unit, stock in zip(candidates, balls)
+    ]
+    return Unique1GlowBallPlanningResult(
+        assignments=assignments,
+        inventory=inventory,
+        keep=max(0, keep),
+        candidate_count=len(candidates),
+    )
+
+
+@dataclass(frozen=True)
 class ShopPriceSegment:
     quantity: int
     unit_price: int
@@ -522,12 +608,14 @@ class SmartEnhanceResources:
     general_rings: int
     specific_rings: int
     hearts: int
+    unique1_glow_balls: int
 
 
 @dataclass
 class SmartEnhancePlan:
     star_exceed: StarExceedPlanningResult
     goddess_purchases: List[GoddessPurchasePlan]
+    unique1_glow_balls: Unique1GlowBallPlanningResult
     unique2: List[Unique2UnitPlan]
     unique1: Unique1PlanningResult
     amulet_inventory: int
@@ -541,6 +629,7 @@ class SmartEnhancePlan:
             general_rings=self.star_exceed.general_ring_use,
             specific_rings=self.star_exceed.specific_ring_use,
             hearts=self.unique1.heart_consumption,
+            unique1_glow_balls=self.unique1_glow_balls.consumption,
         )
 
     @property
@@ -551,12 +640,14 @@ class SmartEnhancePlan:
 @description(
     "自动规划全部已持有角色的五星、等级突破、专武2和专武1。"
     "\n地图可刷角色不使用母猪石；不可刷角色可购买碎片升五星，40片突破可继续购买，120片突破只使用戒指。"
+    "\n未开专武1且升星、突破后角色碎片不足50时，可使用保留数量之外的专武球，并从最低等级的专武球开始分配。"
     "\n专武1保留设置数量的心碎，依次优先完成仅差10/20心碎的角色、平铺到130级、再优先提升已有高等级专武；10/20心碎收尾角色缺少不可刷碎片时会使用母猪石补齐。"
     "\n默认仅预览，开启执行后会先从可可萝钱包将玛娜提至持有上限。"
 )
 @name("智能强化所有角色")
 @booltype("smart_unit_enhance_execute", "执行强化", False)
 @inttype("smart_unit_enhance_ring_keep", "通用戒指保留", 10, list(range(101)))
+@inttype("smart_unit_enhance_ball_keep", "专武球保留", 3, [0, 1, 3, 5])
 @inttype("smart_unit_enhance_heart_keep", "心碎保留", 500, list(range(5001)))
 @default(False)
 class smart_unit_enhance(UnitController):
@@ -568,6 +659,56 @@ class smart_unit_enhance(UnitController):
             self.unit_id = unit_id
             limits[unit_id] = await self.is_unique_growth_unit()
         return limits
+
+    def _unique1_glow_ball_plan(
+        self,
+        star_plan: StarExceedPlanningResult,
+        growth_limits: Mapping[int, Optional[GrowthParameterUnique]],
+    ) -> Unique1GlowBallPlanningResult:
+        stocks: List[Unique1GlowBallStock] = []
+        for item_id, growth_id in db.unique_equip_glow_ball_growth_id.items():
+            limit = db.growth_parameter_unique.get(growth_id)
+            if not limit or limit.unique_equip_strength_point_1 <= 0:
+                continue
+            count = self.client.data.get_inventory((eInventoryType.Item, item_id))
+            if count <= 0:
+                continue
+            stocks.append(
+                Unique1GlowBallStock(
+                    item_id=item_id,
+                    growth_id=growth_id,
+                    target_level=db.get_unique_equip_level_from_pt(
+                        1, limit.unique_equip_strength_point_1
+                    ),
+                    count=count,
+                )
+            )
+
+        units: List[Unique1GlowBallUnitInput] = []
+        for plan in star_plan.units:
+            if plan.unit_id not in db.unit_unique_equip.get(1, {}):
+                continue
+            unit = self.client.data.unit[plan.unit_id]
+            slot = unit.unique_equip_slot[0] if unit.unique_equip_slot else None
+            unique1_id = db.unit_unique_equip[1][plan.unit_id].equip_id
+            units.append(
+                Unique1GlowBallUnitInput(
+                    unit_id=plan.unit_id,
+                    eligible=plan.target_rarity >= 5 and plan.will_exceed,
+                    unique1_equipped=bool(slot and slot.is_slot),
+                    unique1_crafted=self.client.data.get_inventory(
+                        (eInventoryType.Equip, unique1_id)
+                    ) > 0,
+                    has_growth_ball=growth_limits.get(plan.unit_id) is not None,
+                    memory_inventory=plan.memory_after,
+                )
+            )
+
+        return plan_unique1_glow_balls(
+            units,
+            stocks,
+            self.get_config("smart_unit_enhance_ball_keep"),
+        )
 
     @staticmethod
     def _goddess_shop_items(shop_list) -> Dict[int, ShopItem]:
@@ -888,6 +1029,14 @@ class smart_unit_enhance(UnitController):
             general_ring_id,
             self.get_config("smart_unit_enhance_ring_keep"),
         )
+        unique1_glow_balls = self._unique1_glow_ball_plan(
+            star_plan, growth_limits
+        )
+        for assignment in unique1_glow_balls.assignments:
+            growth_limits[assignment.unit_id] = db.growth_parameter_unique[
+                assignment.growth_id
+            ]
+
         heart_inventory = self.client.data.get_inventory(db.xinsui)
         heart_keep = self.get_config("smart_unit_enhance_heart_keep")
         unique1 = self._plan_unique1_with_finisher_purchases(
@@ -907,6 +1056,7 @@ class smart_unit_enhance(UnitController):
         return SmartEnhancePlan(
             star_exceed=star_plan,
             goddess_purchases=purchases,
+            unique1_glow_balls=unique1_glow_balls,
             unique2=unique2,
             unique1=unique1,
             amulet_inventory=self.client.data.get_shop_gold(
@@ -943,6 +1093,22 @@ class smart_unit_enhance(UnitController):
             f"心碎：库存{unique1.heart_inventory}/消耗{resources.hearts}/"
             f"保留{unique1.heart_keep}{heart_extra}"
         )
+        glow_balls = plan.unique1_glow_balls
+        self._log(
+            f"专武球：库存{glow_balls.inventory}/消耗{resources.unique1_glow_balls}/"
+            f"保留{glow_balls.keep}（最低等级优先）"
+        )
+        if glow_balls.assignments:
+            level_counts = Counter(
+                assignment.target_level for assignment in glow_balls.assignments
+            )
+            levels = "、".join(
+                f"{level}级x{count}" for level, count in sorted(level_counts.items())
+            )
+            self._log(
+                f"专武球分配：{levels}；"
+                f"{self._brief_unit_names([item.unit_id for item in glow_balls.assignments])}"
+            )
         bank = self.client.data.user_gold_bank_info
         bank_mana = bank.bank_gold if bank else 0
         mana = self.client.data.get_mana()
@@ -978,9 +1144,16 @@ class smart_unit_enhance(UnitController):
             f"{sum(item.pure_memory_needed for item in unique2_run)}；暂缓{len(unique2_wait)}"
         )
 
+        glow_ball_unit_ids = {
+            item.unit_id for item in glow_balls.assignments
+        }
         unique1_run = [
             item for item in unique1.units
-            if item.source.eligible and item.target_level > item.source.current_level
+            if item.source.eligible
+            and (
+                item.target_level > item.source.current_level
+                or item.unit_id in glow_ball_unit_ids
+            )
         ]
         phase_units = {
             phase: sum(
@@ -1020,7 +1193,8 @@ class smart_unit_enhance(UnitController):
         self._log(
             f"专武1：强化{len(unique1_run)}人（收尾{phase_units['10/20心碎收尾']}/"
             f"平铺{phase_units['平铺130级']}/高专{phase_units['高专优先']}），"
-            f"角色碎片{sum(item.memory_use for item in unique1_run)}（母猪石补{unique1_buy}）；"
+            f"专武球{resources.unique1_glow_balls}，角色碎片"
+            f"{sum(item.memory_use for item in unique1_run)}（母猪石补{unique1_buy}）；"
             f"暂缓 未五星突破{len(unique1_not_ready)}/待刷{len(farm_wait)}/"
             f"碎片不足{len(fragment_wait)}/心碎预算{len(heart_wait)}"
         )
@@ -1122,9 +1296,56 @@ class smart_unit_enhance(UnitController):
             except Exception as error:
                 self._warn(f"{self.unit_name}星级/突破执行失败：{error}")
 
-    async def _execute_unique2(self, plans: Sequence[Unique2UnitPlan]) -> None:
+    async def _execute_unique1_glow_balls(
+        self, result: Unique1GlowBallPlanningResult
+    ) -> Set[int]:
+        blocked: Set[int] = set()
+        for assignment in result.assignments:
+            self.unit_id = assignment.unit_id
+            try:
+                if self.unit.unit_rarity < 5 or not self.unit.exceed_stage:
+                    raise AbortError("未完成五星突破")
+                slot = self.unit.unique_equip_slot[0] if self.unit.unique_equip_slot else None
+                if slot and slot.is_slot:
+                    raise AbortError("专武1已装备，取消本次专武球分配")
+                unique1_id = db.unit_unique_equip[1][assignment.unit_id].equip_id
+                if self.client.data.get_inventory(
+                    (eInventoryType.Equip, unique1_id)
+                ) > 0:
+                    raise AbortError("已有制作完成的专武1，取消本次专武球分配")
+
+                planned_limit = db.growth_parameter_unique[assignment.growth_id]
+                actual_limit = await self.is_unique_growth_unit()
+                if actual_limit is None:
+                    self._log(
+                        f"{self.unit_name}使用{db.get_item_name(assignment.item_id)}"
+                    )
+                    await self.client.set_growth_item_unique(
+                        assignment.unit_id, assignment.item_id
+                    )
+                    actual_limit = await self.is_unique_growth_unit()
+
+                if (
+                    actual_limit is None
+                    or actual_limit.unique_equip_rank_1
+                    < planned_limit.unique_equip_rank_1
+                    or actual_limit.unique_equip_strength_point_1
+                    < planned_limit.unique_equip_strength_point_1
+                ):
+                    raise AbortError("专武球生效等级低于规划等级")
+            except Exception as error:
+                blocked.add(assignment.unit_id)
+                self._warn(f"{self.unit_name}专武球使用失败：{error}")
+        return blocked
+
+    async def _execute_unique2(
+        self,
+        plans: Sequence[Unique2UnitPlan],
+        blocked_glow_ball_units: Optional[Set[int]] = None,
+    ) -> None:
+        blocked_glow_ball_units = blocked_glow_ball_units or set()
         for item in plans:
-            if item.wait_reason:
+            if item.wait_reason or item.unit_id in blocked_glow_ball_units:
                 continue
             self.unit_id = item.unit_id
             try:
@@ -1138,7 +1359,12 @@ class smart_unit_enhance(UnitController):
             except Exception as error:
                 self._warn(f"{self.unit_name}专武2强化失败：{error}")
 
-    async def _execute_unique1(self, result: Unique1PlanningResult) -> None:
+    async def _execute_unique1(
+        self,
+        result: Unique1PlanningResult,
+        blocked_glow_ball_units: Optional[Set[int]] = None,
+    ) -> None:
+        blocked_glow_ball_units = blocked_glow_ball_units or set()
         by_unit = {item.unit_id: item for item in result.units}
         execution_order = list(result.allocation_order)
         execution_order.extend(
@@ -1149,6 +1375,8 @@ class smart_unit_enhance(UnitController):
         )
 
         for unit_id in execution_order:
+            if unit_id in blocked_glow_ball_units:
+                continue
             item = by_unit[unit_id]
             self.unit_id = unit_id
             try:
@@ -1191,6 +1419,9 @@ class smart_unit_enhance(UnitController):
                 f"当前{self.client.data.get_mana() / self.E:.2f}亿"
             )
         await self._execute_star_exceed(plan)
-        await self._execute_unique2(plan.unique2)
-        await self._execute_unique1(plan.unique1)
+        blocked_glow_ball_units = await self._execute_unique1_glow_balls(
+            plan.unique1_glow_balls
+        )
+        await self._execute_unique2(plan.unique2, blocked_glow_ball_units)
+        await self._execute_unique1(plan.unique1, blocked_glow_ball_units)
         self._log("执行结束，失败项见警告" if self.is_warn else "执行完成")
