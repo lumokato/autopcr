@@ -1,15 +1,26 @@
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from ..modulebase import *
 from ..config import *
 from ...core.pcrclient import pcrclient
 from ...model.error import *
 from ...model.common import ExtraEquipChangeSlot, ExtraEquipChangeUnit, ExtraEquipProtectInfo, InventoryInfoPost
+from ...model.enums import eInventoryType, eSystemId
 from .exequip_cleanup_analyzer import ExEquipCleanupAnalyzer, compute_max_possible_r2
 
 
 EX_EQUIP_SHOP_MONTHLY_LIMIT = 3
 EX_EQUIP_SHOP_SURPLUS_R2_TARGET = 2
+EX_EQUIP_SHOP_BY_SLOT = {
+    1: eSystemId.EX_EQUIPMENT_WEAPON_SHOP,
+    2: eSystemId.EX_EQUIPMENT_ARMOR_SHOP,
+    3: eSystemId.EX_EQUIPMENT_ACCESSORY_SHOP,
+}
+EX_EQUIP_SHOP_CURRENCY_NAMES = {
+    eSystemId.EX_EQUIPMENT_WEAPON_SHOP: '武器币',
+    eSystemId.EX_EQUIPMENT_ARMOR_SHOP: '防具币',
+    eSystemId.EX_EQUIPMENT_ACCESSORY_SHOP: '饰品币',
+}
 
 
 def _is_force_locked(ex_id: int) -> bool:
@@ -63,7 +74,10 @@ def _plan_missing_normal_best_ex_equip_buys(report):
         for row in slot_report.equip_reports:
             if row.is_clan_battle or db.get_ex_equip_rarity(row.ex_equipment_id) != 3:
                 continue
-            best_demand = row.exclusive_best_count + row.shared_best_count
+            # shared_best_count is apportioned across tied best equips for cleanup
+            # retention. Purchases must cover every unit for which this normal
+            # equip is optimal, even when a clan-battle equip is tied with it.
+            best_demand = row.best_count
             if best_demand <= 0:
                 continue
             target = best_demand + EX_EQUIP_SHOP_SURPLUS_R2_TARGET
@@ -101,6 +115,139 @@ def _log_planned_shop_buys(module: Module, planned_buys):
             f"{row.equip_name} +{item['buy_count']} "
             f"(当前可成品{item['possible']} / 目标{item['target']} = 最优需求{item['best_demand']}+{EX_EQUIP_SHOP_SURPLUS_R2_TARGET})"
         )
+
+
+def _empty_ex_equip_shop_buy_result():
+    return {
+        'items': [],
+        'skipped': [],
+        'cost_by_shop': {},
+    }
+
+
+def _shop_item_purchase_count(item) -> int:
+    if item.purchase_count is not None:
+        return item.purchase_count
+    return item.exchange_count or 0
+
+
+def _shop_item_remaining_count(item) -> int:
+    if item.sold:
+        return 0
+    purchased = _shop_item_purchase_count(item)
+    if item.is_unlimited_stock:
+        remaining = EX_EQUIP_SHOP_MONTHLY_LIMIT
+    elif item.stock_count is not None:
+        remaining = max(0, item.stock_count - purchased)
+    else:
+        remaining = max(0, EX_EQUIP_SHOP_MONTHLY_LIMIT - purchased)
+    return remaining
+
+
+def _shop_item_buy_cost(item, buy_count: int) -> int:
+    if buy_count <= 0:
+        return 0
+    purchased = _shop_item_purchase_count(item)
+    if item.price_group:
+        return sum(
+            db.get_shop_item_price_info(item.price_group, purchased + offset).count
+            for offset in range(buy_count)
+        )
+    if item.price and item.price.currency_num is not None:
+        return item.price.currency_num * buy_count
+    raise ValueError(f'商店槽位{item.slot_id}缺少价格信息')
+
+
+def _affordable_shop_item_count(item, wanted_count: int, currency: int):
+    for count in range(wanted_count, 0, -1):
+        cost = _shop_item_buy_cost(item, count)
+        if cost <= currency:
+            return count, cost
+    return 0, 0
+
+
+async def _buy_planned_normal_best_ex_equips(client: pcrclient, planned_buys):
+    result = _empty_ex_equip_shop_buy_result()
+    if not planned_buys:
+        return result
+
+    shop_response = await client.get_shop_item_list()
+    shops = {shop.system_id: shop for shop in (shop_response.shop_list or [])}
+    candidates_by_shop = defaultdict(list)
+
+    for plan in planned_buys:
+        row = plan['row']
+        shop_id = EX_EQUIP_SHOP_BY_SLOT.get(row.slot_index)
+        shop = shops.get(shop_id)
+        if shop is None:
+            result['skipped'].append(f'{row.equip_name}: 对应EX商店未开启')
+            continue
+        shop_item = next((
+            item for item in (shop.item_list or [])
+            if item.type == eInventoryType.ExtraEquip and item.item_id == row.ex_equipment_id
+        ), None)
+        if shop_item is None:
+            result['skipped'].append(f'{row.equip_name}: 商店中没有该装备')
+            continue
+        remaining = _shop_item_remaining_count(shop_item)
+        wanted = min(plan['buy_count'], remaining)
+        if wanted <= 0:
+            result['skipped'].append(f'{row.equip_name}: 本月已无可购买次数')
+            continue
+        candidates_by_shop[shop_id].append((plan, shop_item, wanted))
+
+    for shop_id in sorted(candidates_by_shop):
+        currency = client.data.get_shop_gold(shop_id)
+        selected = Counter()
+        selected_items = []
+        estimated_cost = 0
+        for plan, shop_item, wanted in candidates_by_shop[shop_id]:
+            buy_count, cost = _affordable_shop_item_count(shop_item, wanted, currency)
+            row = plan['row']
+            if buy_count <= 0:
+                result['skipped'].append(
+                    f'{row.equip_name}: {EX_EQUIP_SHOP_CURRENCY_NAMES[shop_id]}不足'
+                )
+                continue
+            selected[shop_item.slot_id] = buy_count
+            selected_items.append({
+                'row': row,
+                'buy_count': buy_count,
+                'shop_id': shop_id,
+            })
+            estimated_cost += cost
+            currency -= cost
+            if buy_count < wanted:
+                result['skipped'].append(
+                    f'{row.equip_name}: {EX_EQUIP_SHOP_CURRENCY_NAMES[shop_id]}不足，仅购买{buy_count}/{wanted}'
+                )
+
+        if not selected:
+            continue
+        currency_before = client.data.get_shop_gold(shop_id)
+        await client.shop_buy_bulk(shop_id, selected)
+        currency_after = client.data.get_shop_gold(shop_id)
+        actual_cost = currency_before - currency_after
+        result['cost_by_shop'][shop_id] = actual_cost if actual_cost > 0 or estimated_cost == 0 else estimated_cost
+        result['items'].extend(selected_items)
+
+    return result
+
+
+def _log_ex_equip_shop_buy_result(module: Module, planned_buys, result):
+    if not planned_buys:
+        module._log('商店实际购买: 无缺口')
+        return
+    if result['items']:
+        module._log('商店实际购买:')
+        for item in result['items']:
+            module._log(f"{item['row'].equip_name} +{item['buy_count']}")
+        for shop_id, cost in result['cost_by_shop'].items():
+            module._log(f'{EX_EQUIP_SHOP_CURRENCY_NAMES[shop_id]}花费: {cost}')
+    else:
+        module._log('商店实际购买: 0')
+    for reason in result['skipped']:
+        module._warn(f'购买跳过: {reason}')
 
 
 async def _unlock_equips(client: pcrclient, equips):
@@ -211,19 +358,27 @@ async def _enhance_to_target(client: pcrclient, ex_id: int, target_full: int, en
     return actions
 
 
-async def _recycle_excess(client: pcrclient, ex_id: int, keep_total: int, full_target: int):
+async def _recycle_excess(client: pcrclient, ex_id: int, keep_total: int):
     rarity = db.get_ex_equip_rarity(ex_id)
     if rarity in (4, 5):
         return 0
     equipped_slots = _equipped_ex_slots(client)
     blocked_consume_serials = set(equipped_slots) | _restricted_ex_serials(client)
     stats = _stats_for_ex(client, ex_id)
-    keep_r2 = max(0, keep_total - full_target)
     recycle_ids = []
-    r2_excess = sorted([ex for ex in stats['r2'] if _can_consume_ex(ex, blocked_consume_serials)], key=lambda ex: ex.enhancement_pt)
-    if len(r2_excess) > keep_r2:
-        recycle_ids.extend(ex.serial_id for ex in r2_excess[keep_r2:])
-    recycle_ids.extend(ex.serial_id for ex in stats['r0'] if _can_consume_ex(ex, blocked_consume_serials))
+    ready_total = len(stats['full']) + len(stats['r2'])
+    needed_r2 = max(0, keep_total - len(stats['full']))
+    r2_candidates = sorted(
+        [ex for ex in stats['r2'] if _can_consume_ex(ex, blocked_consume_serials)],
+        key=lambda ex: ex.enhancement_pt,
+    )
+    r2_excess_count = max(0, len(stats['r2']) - needed_r2)
+    recycle_ids.extend(ex.serial_id for ex in r2_candidates[:r2_excess_count])
+    if ready_total >= keep_total:
+        recycle_ids.extend(
+            ex.serial_id for ex in stats['r0']
+            if _can_consume_ex(ex, blocked_consume_serials)
+        )
     gap = client.data.settings.ex_equip.ex_equip_limit_consume_num
     actions = 0
     for i in range(0, len(recycle_ids), gap):
@@ -286,7 +441,7 @@ def _build_detail_rows(report, planned_buy_counts=None):
 @singlechoice('ex_equip_cleanup_enhance_mode', '强化模式', '强化一半', ['不强化', '强化一半', '全强化'])
 @inttype('ex_equip_cleanup_clan_full_cap', '会战最多强化数', 20, list(range(0, 51)))
 @booltype('ex_equip_cleanup_buy_missing_normal_best', '购买缺口普通最优装', False)
-@description('执行 EX 装清理：按照战力最优原则，尝试解锁可编辑金/粉装，按目标合成/强化、分解溢出金装；关闭执行清理时可预览普通最优金装缺口的商店购买计划并在表格现状中标记(+3)，不真正购买')
+@description('执行 EX 装清理：按照战力最优原则，先购买缺口普通最优金装，再尝试解锁可编辑金/粉装，按目标合成/强化、分解溢出金装；关闭执行清理时仅预览购买计划并在表格现状中标记(+3)')
 @name('EX装清理')
 @default(True)
 class ex_equip_cleanup_execute(Module):
@@ -311,24 +466,38 @@ class ex_equip_cleanup_execute(Module):
         pink_groups = 0
         pink_rankup = 0
         pink_enhance = 0
+        planned_buys = _plan_missing_normal_best_ex_equip_buys(before) if buy_missing_normal_best else []
+        shop_buy_result = _empty_ex_equip_shop_buy_result()
+        execution_report = before
 
         if do_apply:
+            if buy_missing_normal_best:
+                shop_buy_result = await _buy_planned_normal_best_ex_equips(client, planned_buys)
+                _log_ex_equip_shop_buy_result(self, planned_buys, shop_buy_result)
+                if shop_buy_result['items']:
+                    execution_report = ExEquipCleanupAnalyzer(client, getattr(self._parent, 'alias', 'unknown'), normal_floor_total=normal_floor, clan_floor_total=clan_floor, enhance_mode=enhance_mode, clan_full_cap=clan_full_cap).analyze()
+
             if do_prepare:
                 lock_candidates = [ex for ex in client.data.ex_equips.values() if ex.protection_flag == 2 and db.get_ex_equip_rarity(ex.ex_equipment_id) in (3, 4)]
                 unlocked, unlock_skipped = await _unlock_equips(client, lock_candidates)
                 removed = await _unequip_all_ex(client)
 
-            for slot_report in before.slot_reports:
+            for slot_report in execution_report.slot_reports:
                 for row in slot_report.equip_reports:
                     ex_id = row.ex_equipment_id
                     rarity = db.get_ex_equip_rarity(ex_id)
                     if rarity in (4, 5):
                         continue
                     keep_total = max(row.keep_target_min, clan_floor if row.is_clan_battle else normal_floor)
+                    if buy_missing_normal_best and not row.is_clan_battle and row.best_count > 0:
+                        keep_total = max(
+                            keep_total,
+                            row.best_count + EX_EQUIP_SHOP_SURPLUS_R2_TARGET,
+                        )
                     full_target = row.full_target
                     rankup_actions += await _rankup_to_target(client, ex_id, keep_total)
                     enhance_actions += await _enhance_to_target(client, ex_id, full_target, enhance_mode=enhance_mode, clan_full_cap=clan_full_cap)
-                    recycle_actions += await _recycle_excess(client, ex_id, keep_total, full_target)
+                    recycle_actions += await _recycle_excess(client, ex_id, keep_total)
                     processed += 1
 
             grouped = defaultdict(list)
@@ -348,6 +517,12 @@ class ex_equip_cleanup_execute(Module):
             self._log(f'解锁成功: {len(unlocked)} / 解锁跳过: {len(unlock_skipped)} / 脱下件数: {removed}')
             self._log(f'合成次数: {rankup_actions + pink_rankup} / 强化次数: {enhance_actions + pink_enhance} / 分解件数: {recycle_actions}')
             self._table_header(['项目', '数值'])
+            if buy_missing_normal_best:
+                self._table({'项目': '购买装备种类', '数值': len(shop_buy_result['items'])})
+                self._table({'项目': '购买件数', '数值': sum(item['buy_count'] for item in shop_buy_result['items'])})
+                for shop_id in EX_EQUIP_SHOP_BY_SLOT.values():
+                    self._table({'项目': f'{EX_EQUIP_SHOP_CURRENCY_NAMES[shop_id]}花费', '数值': shop_buy_result['cost_by_shop'].get(shop_id, 0)})
+                self._table({'项目': '购买跳过', '数值': len(shop_buy_result['skipped'])})
             self._table({'项目': '解锁成功', '数值': len(unlocked)})
             self._table({'项目': '解锁跳过', '数值': len(unlock_skipped)})
             self._table({'项目': '脱下件数', '数值': removed})
@@ -356,7 +531,6 @@ class ex_equip_cleanup_execute(Module):
             self._table({'项目': '分解件数', '数值': recycle_actions})
             self._table({'项目': '粉装分组', '数值': pink_groups})
         else:
-            planned_buys = _plan_missing_normal_best_ex_equip_buys(before) if buy_missing_normal_best else []
             _log_report_summary(self, before, '预览汇总')
             if buy_missing_normal_best:
                 _log_planned_shop_buys(self, planned_buys)

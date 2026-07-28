@@ -160,7 +160,10 @@ def compute_decompose_tiers(stats: Dict[str, int], reserve_r2_unenhanced: int, k
 
 
 def compute_max_possible_r2(stats: Dict[str, int]) -> int:
-    return stats['current_full_r2'] + stats['current_r2_not_full'] + (stats['current_r1'] + stats['current_r0']) // 3
+    ready_r2 = stats['current_full_r2'] + stats['current_r2_not_full']
+    r1_crafts = min(stats['current_r1'], stats['current_r0'])
+    remaining_r0 = stats['current_r0'] - r1_crafts
+    return ready_r2 + r1_crafts + remaining_r0 // 3
 
 
 def get_non_clan_retention_rule(ex_equipment_id: int, normal_floor_total: int = 5) -> Dict[str, int]:
