@@ -1,3 +1,29 @@
+ARG AUTOPCR_WEB_COMMIT=8e329362cfdbf30c72f987116ed3c488e969aaef
+
+# 固定前端源码版本，并叠加与本仓库后端协议配套的界面修改。
+FROM node:22-bookworm-slim AS frontend-builder
+
+ARG AUTOPCR_WEB_COMMIT
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install --global pnpm@11.9.0
+
+WORKDIR /web
+
+RUN curl -fsSL --retry 3 --retry-all-errors --connect-timeout 20 --max-time 180 \
+        "https://github.com/Lanly109/AutoPCR_Web/archive/${AUTOPCR_WEB_COMMIT}.tar.gz" \
+        -o /tmp/autopcr-web.tar.gz \
+    && tar -xzf /tmp/autopcr-web.tar.gz --strip-components=1 -C /web \
+    && rm /tmp/autopcr-web.tar.gz
+
+COPY frontend/overrides/pnpm-workspace.yaml ./pnpm-workspace.yaml
+RUN pnpm install --frozen-lockfile
+
+COPY frontend/overrides/src/ ./src/
+RUN pnpm run build
+
 # 阶段1：构建工具和依赖安装
 FROM python:3.10-slim AS tools
 
@@ -37,7 +63,12 @@ RUN pip install --upgrade pip && \
 # 阶段3：最终镜像
 FROM python:3.10-slim
 
+ARG AUTOPCR_WEB_COMMIT
+
 ENV PYTHONIOENCODING=utf-8
+
+LABEL org.opencontainers.image.autopcr-web-commit="$AUTOPCR_WEB_COMMIT" \
+      org.opencontainers.image.autopcr-web-overlay="favorites-execution-mode-20260730"
 
 # 设置时区
 RUN apt-get update && \
@@ -54,8 +85,11 @@ COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/pytho
 # 复制项目代码
 COPY . .
 
-# 预下载或执行可能会生成大的临时文件的步骤
-RUN python3 _download_web.py || (echo "Failed to download web file" && exit 1)
+# 使用已锁定源码构建的前端，避免未发布到 Release 的功能在镜像中丢失。
+COPY --from=frontend-builder /web/dist ./autopcr/http_server/ClientApp
+RUN printf 'source-%s+autopcr-overlay\n' "$AUTOPCR_WEB_COMMIT" \
+        > ./autopcr/http_server/client_version \
+    && rm -rf ./frontend
 
 EXPOSE 13200
 

@@ -9,6 +9,8 @@ bug反馈/意见/交流群: 885228564
 
 如果网络不好，可自行[下载压缩包](https://github.com/Lanly109/AutoPCR_Web/releases/latest)，然后`python3 _download_web.py /path/to/zip`安装。
 
+Docker 生产镜像不使用上述 Release 下载流程，而是按 [frontend/README.md](frontend/README.md) 中记录的固定源码提交构建前端，并叠加与当前后端协议配套的界面修改。
+
 可再运行`python3 _download_data.py`下载数据库和图片资源。
 
 ## HTTP 服务器模式
