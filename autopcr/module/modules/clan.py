@@ -46,6 +46,7 @@ class clan_like(Module):
         await client.clan_like(rnd[0])
         self._log(f"为【{rnd[1]}】点赞")
 
+@hidden
 @description('对某颜色缺口数量最多的装备发起请求')
 @name("装备请求")
 @singlechoice("clan_equip_request_color", "装备颜色", "all", ["all", "Silver", "Gold", "Purple", 'Red', 'Green'])
@@ -97,21 +98,3 @@ class clan_equip_request(Module):
             self._log(f"请求【{db.get_equip_name(equip_id)}】装备，缺口数量为{num}")
         else:
             raise AbortError("没有可请求的装备")
-
-
-@texttype("equip_user_list", "捐赠用户id列表", "")
-@description("写入可能的捐赠用户id")
-@name("装备捐赠")
-@conditional_execution2("battle_time_skip_equip", ["会战期间"], desc='会战期间跳过', check=False)
-@default(False)
-class clan_equip_donate(Module):
-    async def do_task(self, client: pcrclient):
-        equip_user_list = [int(x) for x in self.get_config('equip_user_list').strip().split(',')]
-        equip_req = await client.getrequests()
-        for req in equip_req:
-            if req.viewer_id in equip_user_list and req.donation_num < 10:
-                donate = await client.donate_equip(req, 2)
-                if donate:
-                    self._log(f"已捐赠给{req.viewer_id}装备{db.get_equip_name(req.equip_id)}")
-                else:
-                    self._log(f"{db.get_equip_name(req.equip_id)}装备不足")

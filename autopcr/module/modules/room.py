@@ -46,41 +46,6 @@ class room_upper_all(Module):
         if not self.log:
             raise SkipError('没有可升级的家园物品。')
 
-@description('先回赞，再随机点赞')
-@name('公会小屋点赞')
-@default(False)
-class room_like_back(Module):
-    async def do_task(self, client: pcrclient):
-        await client.room_start()
-        result = []
-        like_user = []
-        like_history = await client.room_like_history()
-        cnt = like_history.today_like_count
-        pos = 0
-        if cnt >= 10:
-            raise SkipError(f"今日已点赞{cnt}次")
-        while pos < like_history.today_be_liked_count or cnt < 10:
-            viewer_id = 0
-            if pos < like_history.today_be_liked_count:
-                viewer_id = like_history.be_liked_history[pos].viewer_id
-            user = await client.room_visit(viewer_id)
-            pos += 1
-            if user.room_user_info.today_like_flag:
-                continue
-            try:
-                resp = await client.room_like(user.room_user_info.viewer_id)
-                result += resp.reward_list
-                like_user.append(user.room_user_info.name)
-                cnt += 1
-            except Exception as e:
-                if str(e).startswith("此玩家未读取的点赞数"):
-                    continue
-                else:
-                    raise(e)
-
-        result = await client.serialize_reward_summary(result)
-        self._log(f"为【{'|'.join(like_user)}】点赞，获得了:\n" + result)
-
 @description('一键发情所有角色')
 @name('喂蛋糕')
 @default(True)

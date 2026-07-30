@@ -1,15 +1,39 @@
 from typing import Dict, List, Callable, Any
-from .modules import cron_modules, daily_modules, clan_modules, danger_modules, tool_modules, ModuleList, Module, CronModule, planning_modules, unit_modules, table_modules
+from .modules import (
+    Module,
+    ModuleList,
+    CronModule,
+    clan_modules,
+    cron_modules,
+    daily_modules,
+    danger_modules,
+    growth_modules,
+    planning_modules,
+    routine_modules,
+    shop_modules,
+    strategy_modules,
+    story_modules,
+    sweep_modules,
+    table_modules,
+    tool_modules,
+    unit_modules,
+)
 from .modulemgr import ModuleManager
 
 class ModuleListManager:
 
     modules: Dict[str, ModuleList] = {
         cron_modules.key: cron_modules,
-        daily_modules.key: daily_modules,
-        tool_modules.key: tool_modules,
-        unit_modules.key: unit_modules,
+        routine_modules.key: routine_modules,
+        sweep_modules.key: sweep_modules,
+        shop_modules.key: shop_modules,
+        strategy_modules.key: strategy_modules,
+        story_modules.key: story_modules,
+        growth_modules.key: growth_modules,
         planning_modules.key: planning_modules,
+        tool_modules.key: tool_modules,
+        daily_modules.key: daily_modules,
+        unit_modules.key: unit_modules,
         table_modules.key: table_modules,
         clan_modules.key: clan_modules,
         danger_modules.key: danger_modules,
@@ -21,7 +45,7 @@ class ModuleListManager:
 
     @property
     def daily_modules(self) -> List[Module]:
-        return self.get_modules_list('daily')
+        return [module for module in self.get_modules_list('daily') if not module.hidden]
 
     @property
     def cron_modules(self) -> List[CronModule]:
@@ -37,11 +61,13 @@ class ModuleListManager:
         return [m(self.modulemgr) for m in modules]
     
     def generate_info(self, key: str):
-        modules = self.get_modules_list(key)
+        module_list = self.modules.get(key, ModuleList())
+        modules = [module for module in self.get_modules_list(key) if not module.hidden]
         return {
             'config': {**{key: m.get_config(key) for m in modules for key in m.config}, **{m.key: m.get_config(m.key) for m in modules}},
             'order': [m.key for m in modules],
             'info': {m.key: m.generate_info() for m in modules},
+            'execution_mode': module_list.execution_mode,
         }
 
     def generate_tab(self, clan: bool = False, batch: bool = False):
@@ -55,4 +81,5 @@ class ModuleListManager:
                 continue
             if clan and ml.visible_in_clan or batch and ml.visible_in_batch or not ml.hidden:
                 modules.append(ml)
+        modules.sort(key=lambda module: module.key == danger_modules.key)
         return [{'key': m.key, 'name': m.name} for m in modules]

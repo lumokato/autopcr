@@ -20,6 +20,7 @@ import random
 import itertools
 from collections import Counter
 
+@hidden
 @name('撤下会战助战')
 @default(True)
 @description('拒绝内鬼练度')
@@ -848,6 +849,7 @@ class ShuffleTeam(Module):
 class PJJCShuffleTeam(ShuffleTeam):
     def team_cnt(self) -> int: return 3
 
+@hidden
 @description('将pjjc进攻阵容随机错排')
 @name('pjjc换攻')
 class pjjc_atk_shuffle_team(PJJCShuffleTeam):
@@ -869,6 +871,7 @@ class pjjc_def_shuffle_team(PJJCShuffleTeam):
         self._log(f'''本轮换防次数{limit_info.round_times}/{limit_info.round_max_limited_times}，{msg}
 今日换防次数{limit_info.daily_times}/{limit_info.daily_max_limited_times}''')
 
+@hidden
 @description('获得可导入到兰德索尔图书馆的账号数据')
 @name('兰德索尔图书馆导入数据')
 @default(True)
@@ -988,6 +991,7 @@ class get_need_xinsui(Module):
         msg = '\n'.join(msg)
         self._log(msg)
 
+@hidden
 @description('统计考虑角色拉满品级所需的装备减去库存的结果，不考虑仓库中的大件装备')
 @name('获取装备缺口')
 @UnitListConfig('get_need_equip_consider_units', "考虑角色")
@@ -1027,6 +1031,7 @@ class get_need_equip(Module):
 #         msg = '\n'.join([f'{db.get_inventory_name_san(item[0])}: {"缺少" if item[1] > 0 else "盈余"}{abs(item[1])}片' for item in demand])
 #         self._log(msg)
 
+@hidden
 @description('根据同步器规划器的装备缺口计算刷图优先级，越前的优先度越高')
 @name('刷图推荐')
 @UnitListConfig('get_normal_quest_recommand_consider_units', "考虑角色")
@@ -1086,6 +1091,7 @@ class get_normal_quest_recommand(Module):
 #         msg = '\n--------\n'.join(tot)
 #         self._log(msg)
 
+@hidden
 @description('从指定面板的指定队开始清除指定数量的编队')
 @inttype("clear_team_num", "队伍数", 1, [i for i in range(1, 21)])
 @inttype("clear_party_start_num", "初始队伍", 1, [i for i in range(1, 21)])

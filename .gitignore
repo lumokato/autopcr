@@ -26,3 +26,5 @@ autopcr/http_server/client_version
 .env
 debug/
 .claude/
+/test/
+/tests/
