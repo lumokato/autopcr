@@ -28,6 +28,9 @@ def notimplemented(cls):
 def notrunnable(cls):
     return _wrap_init(cls, lambda self: setattr(self, 'runnable', False))
 
+def hidden(cls):
+    return _wrap_init(cls, lambda self: setattr(self, 'hidden', True))
+
 def notlogin(check_data = False):
     def setter(self):
         self.tags.append("不登录")
@@ -135,6 +138,7 @@ class Module:
         self.name: str = ""
         self.default: bool = False
         self.runnable: bool = True
+        self.hidden: bool = False
         self.tags: List[str] = []
         self.stamina_relative: bool = False
         self.description: str = self.name

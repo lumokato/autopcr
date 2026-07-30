@@ -1,6 +1,5 @@
 """
-EX装备相关的辅助类
-用于支持 calc_best_3star_ex_equip 模块
+EX装备分析与清理共用的辅助类
 """
 from dataclasses import dataclass
 from typing import Dict, Set, Tuple

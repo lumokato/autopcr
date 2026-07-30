@@ -311,6 +311,7 @@ class hatsune_mission_accept1(hatsune_mission_accept_base):
 class hatsune_mission_accept2(hatsune_mission_accept_base):
     pass
 
+@hidden
 @singlechoice("hatsune_normal_sweep_quest", "刷取图", 15, [5, 10, 15, 20, 25])
 @ActiveHatsuneChoiceConfig("hatsune_normal_sweep_event", "刷取活动", "")
 @description('剩余体力全部刷活动图')

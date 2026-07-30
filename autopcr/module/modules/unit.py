@@ -48,20 +48,6 @@ class UnitController(Module):
     def unit_name(self) -> str:
         return db.get_unit_name(self.unit_id)
 
-    async def set_unique_growth_unit(self):
-        ball = self.client.data.filter_inventory(db.is_unique_equip_glow_ball)
-        if not ball:
-            raise AbortError(f"没有专武球")
-        if not self.unit.unique_equip_slot:
-            raise AbortError(f"{self.unit_name}专武未实装")
-        if self.unit.unique_equip_slot[0].is_slot:
-            raise AbortError(f"{self.unit_name}专武已装备")
-        if await self.is_unique_growth_unit():
-            raise AbortError(f"{self.unit_name}已装备专武球")
-        ball = ball[0]
-        self._log(f"{self.unit_name}装备专武球")
-        await self.client.set_growth_item_unique(self.unit_id, ball[1])
-
     async def is_growth_unit(self) -> Union[GrowthParameter, GrowthParameterList, None]:
         def old():
             if self.unit_id not in self.client.data.unit:
@@ -814,17 +800,6 @@ class unit_skill_level_up(UnitController):
                 self._log(f"所有技能均等于角色等级{self.unit.unit_level}级，需提升角色等级")
                 await self.unit_level_up_aware(self.unit.unit_level + 1)
 
-@description('仅支持设置未装备专武的角色，优先使用低专武球')
-@name('设置专武球')
-@unitchoice("unit_set_unique_equip_growth_id", "装备角色")
-@default(False)
-class unit_set_unique_equip_growth(UnitController):
-
-    async def do_task(self, client: pcrclient):
-        self.client = client
-        self.unit_id = self.get_config('unit_set_unique_equip_growth_id')
-        await self.set_unique_growth_unit()
-
 @description('支持全部角色，装备星级-1表示不穿装备，自动拉等级指当前等级不足以穿装备或提升技能等级，将会提升角色等级，自动拉品级指当前品级不足以装备专武时，会提升角色品级，自动专武1指开专武2未开专武1时自动开专武1，使用原矿指装备不足时用原矿补充'
              '\n等级升至上限：在当前升级条件下，升级至角色允许的等级上限（比如未突破角色升级至突破后等级，开启该选项可以升级至最大的未突破等级，避免升级失败）')
 @name('拉角色练度')
@@ -1355,6 +1330,7 @@ class set_my_party2(SetMyParty):
 @texttype("set_my_party_text", "队伍阵容", "")
 @inttype("party_start_num", "初始队伍", 1, [i for i in range(1, 21)])
 @inttype("tab_start_num", "初始面板", 1, [i for i in range(1, 7)])
+@hidden
 @name('设置编队')
 class set_my_party(SetMyParty):
 

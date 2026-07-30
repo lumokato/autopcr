@@ -11,6 +11,7 @@ from ...model.enums import *
 from collections import Counter
 from ...core.apiclient import apiclient
 
+@hidden
 @conditional_execution1("lazy_sweep_run_time", ["n庆典"])
 @singlechoice("lazy_sweep_strategy", "刷取策略", "刷最缺", ["刷最缺", "均匀刷"])
 @UnitListConfig('lazy_sweep_consider_units', "考虑角色")
@@ -650,6 +651,7 @@ class DIY_sweep(Module):
 然后循环按次数刷取设置为loop的图
 当被动体力回复完全消耗后，刷图结束
 '''.strip())
+@hidden
 @name("自定义刷图")
 @conditional_execution1("start2_run_time", ['vh庆典'], desc="start2刷取庆典", check=False)
 @conditional_execution1("start_run_time", ['h庆典'], desc="start刷取庆典", check=False)
@@ -680,6 +682,7 @@ class smart_sweep(DIY_sweep):
                         quest.append((x, tab.skip_count))
         return quest
 
+@hidden
 @description('''
 开新图时的便捷设置，将循环刷取所选关卡
 '''.strip())
@@ -695,6 +698,7 @@ class last_normal_quest_sweep(DIY_sweep):
         quest: List[Tuple[int, int]] = [(id, last_sweep_quests_count) for id in last_sweep_quests]
         return quest
 
+@hidden
 @description('''
 农场号临时用刷Hard
 '''.strip())
@@ -714,6 +718,7 @@ class last_hard_quest_sweep(DIY_sweep):
                 raise SkipError("解锁的Hard图超过100,判断为非农场号")
         return quest
 
+@hidden
 @description('''
 农场号临时用刷Normal
 '''.strip())

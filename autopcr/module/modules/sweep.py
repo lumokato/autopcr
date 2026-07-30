@@ -369,6 +369,7 @@ class xinsui_sweep(investigate_sweep):
         return 'xinsui_sweep_3x_campaign_books'
 
 
+@hidden
 @description('按星球杯关卡从高到低扫荡。配置值为关卡本数，超过当前本数后继续从最高本开始下一轮，最多支持3次重置。需求已满足时不刷。')
 @name('星球杯扫荡')
 @conditional_not_execution('force_stop_star_cup_sweep', [], desc='不刷星球杯庆典')

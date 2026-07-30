@@ -37,6 +37,7 @@ class ModuleList:
     hidden: bool = False
     visible_in_clan: bool = False
     visible_in_batch: bool = False
+    execution_mode: str = "manual"
 
 cron_modules = ModuleList(
     '定时',
@@ -51,6 +52,7 @@ cron_modules = ModuleList(
     ],
     hidden_in_batch=True,
     hidden_in_clan=True,
+    execution_mode="cron",
 )
 
 daily_modules = ModuleList(
@@ -61,7 +63,6 @@ daily_modules = ModuleList(
         chara_fortune,
         mission_receive_first,
         clan_like,
-        room_like_back,
         free_gacha,
         normal_gacha,
         monthly_gacha,
@@ -127,7 +128,6 @@ daily_modules = ModuleList(
         master_shop,
 
         clan_equip_request,
-        clan_equip_donate,
         love_up,
         shiori_mission_check,
         alces_story_reading,
@@ -141,20 +141,151 @@ daily_modules = ModuleList(
         birthday_story_reading,
         room_upper_all,
         user_info,
-    ]
+    ],
+    hidden=True,
+    execution_mode="daily",
+)
+
+routine_modules = ModuleList(
+    '日常',
+    'routine',
+    [
+        chara_fortune,
+        mission_receive_first,
+        clan_like,
+        normal_gacha,
+        monthly_gacha,
+        room_accept_all,
+        explore_exp,
+        explore_mana,
+        underground_skip,
+        special_underground_skip,
+        tower_cloister_sweep,
+        mirage_floor_receive,
+        mirage_nemesis_sweep,
+        jjc_reward,
+        abyss_quest_sweep,
+        abyss_boss_sweep,
+        hatsune_dear_reading,
+        hatsune_mission_accept1,
+        hatsune_gacha_exchange,
+        hatsune_mission_accept2,
+        mission_receive_last,
+        seasonpass_accept,
+        role_gacha,
+        love_up,
+        shiori_mission_check,
+        alces_story_reading,
+        main_story_reading,
+        tower_story_reading,
+        hatsune_story_reading,
+        seven_obtent_reading,
+        hatsune_sub_story_reading,
+        guild_story_reading,
+        unit_story_reading,
+        birthday_story_reading,
+        room_upper_all,
+    ],
+    execution_mode="daily",
+)
+
+sweep_modules = ModuleList(
+    '刷取',
+    'sweep',
+    [
+        global_config,
+        talent_sweep,
+        talent_sweep2,
+        smart_very_hard_sweep,
+        xinsui_sweep,
+        starcup_sweep,
+        hatsune_h_sweep,
+        smart_sweep,
+        mirai_very_hard_sweep,
+        smart_hard_sweep,
+        smart_shiori_sweep,
+        mirai_sp1_h_sweep,
+        mirai_sp1_shiori_sweep,
+        last_normal_quest_sweep,
+        lazy_normal_sweep,
+        last_hard_quest_sweep,
+        last_unlock_normal_quest_sweep,
+        all_in_hatsune,
+        hatsune_vhboss_sweep,
+        hatsune_hboss_sweep,
+    ],
+    execution_mode="daily",
+)
+
+shop_modules = ModuleList(
+    '商店',
+    'shop',
+    [
+        normal_shop,
+        limit_shop,
+        underground_shop,
+        jjc_shop,
+        pjjc_shop,
+        clanbattle_shop,
+        master_shop_talent,
+        master_shop,
+    ],
+    execution_mode="daily",
+)
+
+story_modules = ModuleList(
+    '剧情',
+    'story',
+    [
+        hatsune_dear_reading,
+        shiori_mission_check,
+        alces_story_reading,
+        main_story_reading,
+        tower_story_reading,
+        hatsune_story_reading,
+        seven_obtent_reading,
+        hatsune_sub_story_reading,
+        guild_story_reading,
+        unit_story_reading,
+        birthday_story_reading,
+    ],
+    hidden=True,
+    execution_mode="daily",
+)
+
+strategy_modules = ModuleList(
+    '策略',
+    'strategy',
+    [
+        user_info,
+        free_gacha,
+        travel_quest_sweep,
+        travel_round,
+        labyrinth_sweep,
+        ex_equip_recycle,
+        present_receive,
+        seasonpass_reward,
+        clan_equip_request,
+    ],
+    execution_mode="daily",
 )
 
 planning_modules = ModuleList(
     '规划',
     'planning',
     [
-        get_library_import_data,
-        get_need_equip,
-        get_normal_quest_recommand,
         get_need_memory,
         get_need_pure_memory,
         get_need_sp_memory,
         get_need_xinsui,
+        search_unit,
+        missing_unit,
+        missing_emblem,
+        find_talent_quest,
+        find_clan_talent_quest,
+        get_library_import_data,
+        get_need_equip,
+        get_normal_quest_recommand,
     ],
     hidden_in_batch=True,
 )
@@ -180,11 +311,34 @@ unit_modules = ModuleList(
         sync_growth,
         sync_growth_underground_shop,
         unit_memory_buy,
-        unit_set_unique_equip_growth,
         smart_unit_enhance,
         unit_exceed,
         unit_evolution,
-    ]
+    ],
+    hidden=True,
+)
+
+growth_modules = ModuleList(
+    '养成',
+    'growth',
+    [
+        sync_growth,
+        sync_growth_underground_shop,
+        smart_unit_enhance,
+        ex_equip_rainbow_enchance,
+        ex_equip_power_maximun,
+        ex_equip_info,
+        ex_equip_rank_up,
+        ex_equip_enhance_up,
+        ex_equip_cleanup_execute,
+        remove_cb_ex_equip,
+        ex_equip_state,
+        unit_memory_buy,
+        unit_promote,
+        unit_exceed,
+        unit_evolution,
+        refresh_box,
+    ],
 )
 
 clan_modules = ModuleList(
@@ -215,39 +369,22 @@ tool_modules = ModuleList(
     'tool',
     [
         labyrinth_start_reroll,
-        ex_equip_rainbow_enchance,
-        ex_equip_cleanup_execute,
-        ex_equip_power_maximun,
-        set_my_party2,
-        find_talent_quest,
-        find_clan_talent_quest,
-        # return_jewel,
-        # cook_pudding,
-        ex_equip_rank_up,
-        ex_equip_enhance_up,
-        ex_equip_state,
-        half_schedule,
-        set_my_party,
+        travel_team_view,
         caravan_play,
         caravan_shop_buy,
+        set_my_party2,
+        half_schedule,
         clan_battle_knive,
-        ex_equip_info,
-        travel_team_view,
-        missing_emblem,
-        get_clan_support_unit,
-        clear_my_party,
-        remove_cb_ex_equip,
-        remove_cb_support,
         redeem_unit_swap,
-
-        remove_normal_ex_equip,
-        calc_best_3star_ex_equip,
-        
+        get_clan_support_unit,
         jjc_back,
         pjjc_back,
         jjc_info,
         pjjc_info,
         pjjc_def_shuffle_team,
+        set_my_party,
+        clear_my_party,
+        remove_cb_support,
         pjjc_atk_shuffle_team,
     ]
 )
