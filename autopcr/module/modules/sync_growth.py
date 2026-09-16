@@ -446,7 +446,12 @@ class SyncGrowthController(UnitController):
         return [CandidateGroup(items, sum(demand.values()), inventory.copy())]
 
     def _plan_steps(self, start: RankStage, target: RankStage) -> List[StagePlan]:
-        remaining = Counter(self.client.data.inventory)
+        remaining = Counter({
+            item: count for item, count in self.client.data.inventory.items()
+            if count is not None
+        })
+        if None in remaining.values():
+            raise AbortError("库存数据异常")
         remaining_mana = self.client.data.get_mana()
         steps: List[StagePlan] = []
         current = start

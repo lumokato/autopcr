@@ -542,9 +542,11 @@ class datamgr(BaseModel, Component[apiclient]):
     def update_inventory(self, item: InventoryInfo):
         token = (item.type, item.id)
         if token == db.mana:
-            self.gold.gold_id_free = item.stock
+            if item.stock is not None:
+                self.gold.gold_id_free = item.stock
         elif token == db.jewel:
-            self.jewel.free_jewel = item.stock
+            if item.stock is not None:
+                self.jewel.free_jewel = item.stock
         elif item.type == eInventoryType.Unit:
             self.unit[item.id] = item.unit_data
             if item.id not in self.unit_love_data:
@@ -563,7 +565,7 @@ class datamgr(BaseModel, Component[apiclient]):
             else:
                 self.caravan_dishes[item.id] += item.count
         else:
-            self.inventory[token] = item.stock
+            self.inventory[token] = item.stock if item.stock is not None else 0
 
     def recover_max_time(self, quest: int) -> int:
         if db.is_normal_quest(quest):
