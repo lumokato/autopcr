@@ -11,7 +11,6 @@ import NiceModal from '@ebay/nice-modal-react';
 import ResultInfoModal from './ResultInfoModal';
 import ModuleSyncModal from './ModuleSyncModal';
 import { toaster } from '../../components/ui/toaster';
-import { loadFavoriteMap, saveFavoriteMap } from '../../utils/favorites';
 
 interface ModuleProps extends React.ComponentProps<typeof Card.Root> {
     alias: string,
@@ -27,27 +26,36 @@ interface ModuleProps extends React.ComponentProps<typeof Card.Root> {
 }
 
 export default function Module({ alias, areaKey, areaName, executionMode, config, info, isOpen, onOpen, onClose, onConfigUpdate, ...rest }: ModuleProps) {
+    const showEnableToggle = executionMode !== 'manual';
+    const canSyncConfig = executionMode === 'daily';
     const { open: isExpanded, onToggle: onToggleExpand } = useDisclosure({ defaultOpen: false });
     const dangerConfirm = useDisclosure();
     const isDangerous = areaName === '危险';
-    const showEnableToggle = executionMode !== 'manual';
-    const canSyncConfig = executionMode === 'daily';
 
-    const handleToggleFav = (e: React.MouseEvent) => {
+    const handleToggleFav = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        const favMap = loadFavoriteMap(alias);
+        const favKey = `autopcr_fav_${alias}`;
+        const stored = localStorage.getItem(favKey);
+         let favMap: Record<string, string[]> = {};
+         if (stored) {
+             try {
+                 favMap = JSON.parse(stored) as Record<string, string[]>;
+             } catch {
+                 favMap = {};
+             }
+         }
         const areaFavs = new Set(favMap[areaKey] || []);
-
+        
         const isNowFav = !areaFavs.has(info.key);
         if (isNowFav) {
             areaFavs.add(info.key);
         } else {
             areaFavs.delete(info.key);
         }
-
+        
         favMap[areaKey] = Array.from(areaFavs);
-        saveFavoriteMap(alias, favMap);
-
+        localStorage.setItem(favKey, JSON.stringify(favMap));
+        
         // 同步通知父组件更新本地状态，使星星立即变色
         onConfigUpdate?.(`_fav_${info.key}`, isNowFav);
     };
@@ -106,7 +114,7 @@ export default function Module({ alias, areaKey, areaName, executionMode, config
 
     const handleSyncConfig = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!canSyncConfig) {
+        if (areaKey !== 'daily') {
             return;
         }
         const targetAccounts = await NiceModal.show(ModuleSyncModal, { sourceAlias: alias, moduleName: info.name });
@@ -168,23 +176,23 @@ export default function Module({ alias, areaKey, areaName, executionMode, config
     }
 
     return (
-        <Card.Root
-            colorPalette="brand"
-            bg="bg.panel"
-            borderRadius="2xl"
-            shadow="sm"
+        <Card.Root 
+            colorPalette="brand" 
+            bg="bg.panel" 
+            borderRadius="2xl" 
+            shadow="sm" 
             borderWidth="1px"
             borderColor="border.subtle"
             transition="all 0.2s"
             _hover={{ shadow: 'md', borderColor: "blue.400" }}
-            {...rest}
+            {...rest} 
         >
             <Card.Header py={3} cursor="pointer" onClick={onToggleExpand}>
                 <Flex align="center" wrap="wrap" gap={2}>
                     {showEnableToggle && <Box onClick={(e) => e.stopPropagation()} mr={{ base: 1, md: 1 }}>
                          {/* 受控组件绑定，保证导入/更新后界面同步勾选 */}
-                         <Checkbox
-                            checked={!!config[info.key]}
+                         <Checkbox 
+                            checked={!!config[info.key]} 
                             onCheckedChange={onCheckedChange}
                             size="lg"
                             colorPalette="blue"
@@ -194,7 +202,7 @@ export default function Module({ alias, areaKey, areaName, executionMode, config
                         <HStack gap={2} flexWrap="wrap" align="center">
                             {/* 模块名称 */}
                             <Heading size={{ base: 'sm', md: 'md' }} fontWeight="bold" truncate>{info?.name}</Heading>
-
+                            
                             {/* 收藏黄星 */}
                             <Box
                                 onClick={handleToggleFav}
@@ -208,7 +216,7 @@ export default function Module({ alias, areaKey, areaName, executionMode, config
                             >
                                 <FiStar fill={config?.[`_fav_${info.key}`] ? "currentColor" : "none"} />
                             </Box>
-
+                            
                             {/* 标签 */}
                             {info?.tags.map(item => (
                                 <Tag.Root key={item} colorPalette="purple" variant="subtle" size="sm">
