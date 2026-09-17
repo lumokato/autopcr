@@ -1,4 +1,4 @@
-ARG AUTOPCR_WEB_COMMIT=8e329362cfdbf30c72f987116ed3c488e969aaef
+ARG AUTOPCR_WEB_COMMIT=a486934361212aabdabd5cd14d83f4fc1cb7a9c9
 
 # 固定前端源码版本，并叠加与本仓库后端协议配套的界面修改。
 FROM node:22-bookworm-slim AS frontend-builder
@@ -68,7 +68,7 @@ ARG AUTOPCR_WEB_COMMIT
 ENV PYTHONIOENCODING=utf-8
 
 LABEL org.opencontainers.image.autopcr-web-commit="$AUTOPCR_WEB_COMMIT" \
-      org.opencontainers.image.autopcr-web-overlay="favorites-execution-mode-20260730"
+      org.opencontainers.image.autopcr-web-overlay="execution-mode-20260917"
 
 # 设置时区
 RUN apt-get update && \

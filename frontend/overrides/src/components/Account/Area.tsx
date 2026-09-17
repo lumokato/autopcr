@@ -7,7 +7,6 @@ import { ConfigValue, ExecutionMode, ModuleResponse } from '@interfaces/Module';
 import { Skeleton } from '../../components/ui/skeleton';
 import Toc from "./Toc";
 import { getAccountConfig } from '@api/Account';
-import { loadFavoriteMap, normalizeFavoritesForArea, saveFavoriteMap } from '../../utils/favorites';
 
 interface AreaProps {
     alias: string;
@@ -34,20 +33,29 @@ export default function Area({ alias, keys: key, areaName, showOnlyFav = false }
 
     useEffect(() => {
         let isMounted = true;
-        setState({ config: null, isLoading: true });
 
         if (alias && key) {
             getAccountConfig(alias, key)
                 .then((res) => {
                     if (!isMounted) return;
 
-                    const favMap = normalizeFavoritesForArea(loadFavoriteMap(alias), key, res.order);
-                    saveFavoriteMap(alias, favMap);
-                    const mergedConfig = { ...res.config };
-                    (favMap[key] || []).forEach((moduleKey) => {
-                        mergedConfig[`_fav_${moduleKey}`] = true;
-                    });
-                    const finalRes = { ...res, config: mergedConfig };
+                    const favKey = `autopcr_fav_${alias}`;
+                    const stored = localStorage.getItem(favKey);
+                    let finalRes = res;
+
+                    if (stored) {
+                        try {
+                            const favMap = JSON.parse(stored) as Record<string, string[]>;
+                            const areaFavs = favMap[key] || [];
+                            const mergedConfig = { ...res.config };
+                            areaFavs.forEach((moduleKey) => {
+                                mergedConfig[`_fav_${moduleKey}`] = true;
+                            });
+                            finalRes = { ...res, config: mergedConfig };
+                        } catch {
+                            finalRes = res;
+                        }
+                    }
 
                     setState({ config: finalRes, isLoading: false });
                 })
@@ -78,6 +86,7 @@ export default function Area({ alias, keys: key, areaName, showOnlyFav = false }
     };
 
     const config = state.config;
+
     const executionMode: ExecutionMode = config?.execution_mode
         ?? (key === 'cron' ? 'cron' : ['daily', 'routine', 'sweep', 'shop', 'story', 'strategy'].includes(key) ? 'daily' : 'manual');
 
@@ -102,7 +111,6 @@ export default function Area({ alias, keys: key, areaName, showOnlyFav = false }
         <>
             <Box pb={20} position="relative">
                 <Stack gap={4}>
-                    {/* 首次加载未获取到数据时：只显示灰色骨架块，避免任何白屏 */}
                     {state.isLoading && !config ? (
                         Array.from({ length: 4 }).map((_, i) => (
                             <Box key={i} p={6} borderWidth="1px" borderRadius="2xl" bg="bg.panel" shadow="sm">
@@ -149,7 +157,7 @@ export default function Area({ alias, keys: key, areaName, showOnlyFav = false }
                 zIndex={100}
             >
                 <Popover.Root lazyMount positioning={{ placement: 'left', gutter: 4 }}>
-                    <Popover.Trigger>
+                    <Popover.Trigger asChild>
                         <IconButton
                             aria-label="TOC"
                             colorPalette="blue"
