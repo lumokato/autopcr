@@ -164,7 +164,7 @@ class apiclient(Container["apiclient"]):
         if r"source_ini/get_maintenance_status?format=json" == request.url and "store_url" in response0['data_headers']:
             match = search(r'(?<=gzlj_)(\d+\.\d+\.\d+)', response0['data_headers']["store_url"])
             if not match:
-                raise ValueError("无法解析版本号，请手动修改constants.py的default_ver")
+                raise ValueError("无法自动解析版本号，请设置AUTOPCR_APP_VERSION")
             version = match.group(1)
             self._headers['APP-VER'] = version
             refresh_headers(version)

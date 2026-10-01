@@ -1,12 +1,13 @@
-import { Box, Flex, IconButton, Popover, Stack, useDisclosure } from '@chakra-ui/react';
-import { useEffect, useState, useMemo } from 'react';
+import { Box, Button, Flex, IconButton, Popover, Stack, Text, useDisclosure } from '@chakra-ui/react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { FiCompass } from 'react-icons/fi';
-import Module from "./Module";
+import Module from './Module';
 import { ConfigValue, ExecutionMode, ModuleResponse } from '@interfaces/Module';
 import { Skeleton } from '../../components/ui/skeleton';
-import Toc from "./Toc";
+import Toc from './Toc';
 import { getAccountConfig } from '@api/Account';
+import { toaster } from '../../components/ui/toaster';
 
 interface AreaProps {
     alias: string;
@@ -20,73 +21,129 @@ export interface TocItem {
     id: string;
 }
 
+/** 区服配置数据缓存：只存 JSON，不占 React/DOM。UI 卸载后数据仍在。 */
+const areaConfigCache = new Map<string, ModuleResponse>();
+
+function cacheKey(alias: string, key: string) {
+    return `${alias}::${key}`;
+}
+
+export function getCachedAreaConfig(alias: string, key: string) {
+    return areaConfigCache.get(cacheKey(alias, key));
+}
+
+export function setCachedAreaConfig(alias: string, key: string, data: ModuleResponse) {
+    areaConfigCache.set(cacheKey(alias, key), data);
+}
+
+/** 离开账号详情 / 导入配置成功后调用，释放该账号缓存 */
+export function clearAreaConfigCache(alias?: string) {
+    if (!alias) {
+        areaConfigCache.clear();
+        return;
+    }
+    for (const k of [...areaConfigCache.keys()]) {
+        if (k.startsWith(`${alias}::`)) areaConfigCache.delete(k);
+    }
+}
+
+function mergeFavIntoConfig(alias: string, key: string, res: ModuleResponse): ModuleResponse {
+    const favKey = `autopcr_fav_${alias}`;
+    const stored = localStorage.getItem(favKey);
+    if (!stored) return res;
+    try {
+        const favMap = JSON.parse(stored) as Record<string, string[]>;
+        const areaFavs = favMap[key] || [];
+        if (areaFavs.length === 0) return res;
+        const mergedConfig = { ...res.config };
+        areaFavs.forEach((moduleKey) => {
+            mergedConfig[`_fav_${moduleKey}`] = true;
+        });
+        return { ...res, config: mergedConfig };
+    } catch {
+        return res;
+    }
+}
+
 export default function Area({ alias, keys: key, areaName, showOnlyFav = false }: AreaProps) {
+    const cached = alias && key ? getCachedAreaConfig(alias, key) : undefined;
+
+    const [retryTick, setRetryTick] = useState(0);
     const [state, setState] = useState<{
         config: ModuleResponse | null;
         isLoading: boolean;
-    }>({
-        config: null,
-        isLoading: true,
-    });
+        error: boolean;
+    }>(() => ({
+        config: cached ?? null,
+        isLoading: !cached,
+        error: false,
+    }));
 
     const { open, onOpen, onClose } = useDisclosure();
+    const [tocOpen, setTocOpen] = useState(false);
 
     useEffect(() => {
         let isMounted = true;
+        if (!alias || !key) return;
 
-        if (alias && key) {
-            getAccountConfig(alias, key)
-                .then((res) => {
-                    if (!isMounted) return;
-
-                    const favKey = `autopcr_fav_${alias}`;
-                    const stored = localStorage.getItem(favKey);
-                    let finalRes = res;
-
-                    if (stored) {
-                        try {
-                            const favMap = JSON.parse(stored) as Record<string, string[]>;
-                            const areaFavs = favMap[key] || [];
-                            const mergedConfig = { ...res.config };
-                            areaFavs.forEach((moduleKey) => {
-                                mergedConfig[`_fav_${moduleKey}`] = true;
-                            });
-                            finalRes = { ...res, config: mergedConfig };
-                        } catch {
-                            finalRes = res;
-                        }
-                    }
-
-                    setState({ config: finalRes, isLoading: false });
-                })
-                .catch((err) => {
-                    if (isMounted) {
-                        console.error(err);
-                        setState((prev) => ({ ...prev, isLoading: false }));
-                    }
-                });
+        const hit = getCachedAreaConfig(alias, key);
+        if (hit) {
+            const withFav = mergeFavIntoConfig(alias, key, hit);
+            if (withFav !== hit) {
+                setCachedAreaConfig(alias, key, withFav);
+            }
+            setState({ config: withFav, isLoading: false, error: false });
+            return () => {
+                isMounted = false;
+            };
         }
+
+        setState({ config: null, isLoading: true, error: false });
+
+        getAccountConfig(alias, key)
+            .then((res) => {
+                if (!isMounted) return;
+                const finalRes = mergeFavIntoConfig(alias, key, res);
+                setCachedAreaConfig(alias, key, finalRes);
+                setState({ config: finalRes, isLoading: false, error: false });
+            })
+            .catch((err) => {
+                if (isMounted) {
+                    console.error(err);
+                    setState({ config: null, isLoading: false, error: true });
+                    toaster.create({
+                        type: 'error',
+                        title: '加载配置失败',
+                        description: '请检查网络后重试',
+                    });
+                }
+            });
 
         return () => {
             isMounted = false;
         };
-    }, [alias, key]);
+    }, [alias, key, retryTick]);
 
-    const handleConfigUpdate = (configKey: string, value: ConfigValue) => {
+    const handleConfigUpdate = useCallback((configKey: string, value: ConfigValue) => {
+        // 契约（Config.useConfigSaveFlow 失败回滚守卫依赖）：value 必须原引用透传，不可深拷贝——
+        // 数组值（Multi/MultiSearch）的「父级值仍等于本笔乐观值」守卫用引用比较，拷贝即恒假
         setState((prev) => {
             if (!prev.config) return prev;
-            return {
-                ...prev,
-                config: {
-                    ...prev.config,
-                    config: { ...prev.config.config, [configKey]: value },
-                },
+            const nextConfig: ModuleResponse = {
+                ...prev.config,
+                config: { ...prev.config.config, [configKey]: value },
             };
+            return { ...prev, config: nextConfig };
         });
-    };
+    }, []);
+
+    // state.config 变化时同步到会话缓存（离开区服 UI 后仍能秒开且带最新改动）
+    useEffect(() => {
+        if (!alias || !key || !state.config) return;
+        setCachedAreaConfig(alias, key, state.config);
+    }, [alias, key, state.config]);
 
     const config = state.config;
-
     const executionMode: ExecutionMode = config?.execution_mode
         ?? (key === 'cron' ? 'cron' : ['daily', 'routine', 'sweep', 'shop', 'story', 'strategy'].includes(key) ? 'daily' : 'manual');
 
@@ -121,6 +178,11 @@ export default function Area({ alias, keys: key, areaName, showOnlyFav = false }
                                 <Skeleton height="40px" width="100%" />
                             </Box>
                         ))
+                    ) : state.error && !config ? (
+                        <Box p={6} borderWidth="1px" borderRadius="2xl" bg="bg.panel" shadow="sm" textAlign="center">
+                            <Text color="fg.muted" mb={3}>加载配置失败，请检查网络后重试</Text>
+                            <Button colorPalette="blue" onClick={() => setRetryTick((t) => t + 1)}>重试</Button>
+                        </Box>
                     ) : (
                         visibleModules.map((module) => {
                             const moduleInfo = config?.info?.[module];
@@ -149,29 +211,29 @@ export default function Area({ alias, keys: key, areaName, showOnlyFav = false }
 
             <Flex
                 position="fixed"
-                right={{ base: "3", md: "6" }}
+                right={{ base: '3', md: '6' }}
                 top="50%"
                 transform="translateY(-50%)"
                 justifyContent="center"
                 alignItems="center"
                 zIndex={100}
             >
-                <Popover.Root lazyMount positioning={{ placement: 'left', gutter: 4 }}>
+                <Popover.Root lazyMount open={tocOpen} onOpenChange={(d) => setTocOpen(d.open)} positioning={{ placement: 'left', gutter: 4 }}>
                     <Popover.Trigger asChild>
                         <IconButton
                             aria-label="TOC"
                             colorPalette="blue"
-                            size={{ base: "lg", md: "xl" }}
+                            size={{ base: 'lg', md: 'xl' }}
                             rounded="full"
                             shadow="xl"
                             transition="transform 0.2s ease"
-                            _hover={{ transform: "scale(1.1)", shadow: "2xl" }}
+                            _hover={{ transform: 'scale(1.1)', shadow: '2xl' }}
                         >
                             <FiCompass />
                         </IconButton>
                     </Popover.Trigger>
                     <Popover.Content width="auto" minW="200px">
-                        <Toc maxH="60vh" tocList={tocList} />
+                        <Toc maxH="60vh" tocList={tocList} onNavigate={() => setTocOpen(false)} />
                     </Popover.Content>
                 </Popover.Root>
             </Flex>
