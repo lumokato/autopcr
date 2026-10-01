@@ -167,6 +167,7 @@ routine_modules = ModuleList(
         mirage_floor_receive,
         mirage_nemesis_sweep,
         jjc_reward,
+        role_mission_get,
         abyss_quest_sweep,
         abyss_boss_sweep,
         hatsune_dear_reading,
