@@ -167,7 +167,6 @@ routine_modules = ModuleList(
         mirage_floor_receive,
         mirage_nemesis_sweep,
         jjc_reward,
-        role_mission_get,
         abyss_quest_sweep,
         abyss_boss_sweep,
         hatsune_dear_reading,
@@ -198,6 +197,7 @@ sweep_modules = ModuleList(
     'sweep',
     [
         global_config,
+        role_mission_get,
         talent_sweep,
         talent_sweep2,
         smart_very_hard_sweep,
@@ -233,6 +233,7 @@ shop_modules = ModuleList(
         clanbattle_shop,
         master_shop_talent,
         master_shop,
+        travel_shop,
     ],
     execution_mode="daily",
 )
